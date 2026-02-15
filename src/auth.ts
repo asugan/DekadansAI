@@ -16,6 +16,7 @@ export const auth = betterAuth({
   database,
   secret: config.betterAuthSecret,
   baseURL: config.betterAuthUrl,
+  trustedOrigins: config.betterAuthTrustedOrigins,
   emailAndPassword: {
     enabled: true,
     autoSignIn: true

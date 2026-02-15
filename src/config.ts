@@ -20,6 +20,23 @@ function toBoolean(value: string | undefined, fallback = false): boolean {
   return fallback;
 }
 
+function toStringArray(value: string | undefined, fallback: string[] = []): string[] {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const parsed = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  if (parsed.length === 0) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
 export interface AppConfig {
   port: number;
   trustProxy: boolean;
@@ -29,6 +46,7 @@ export interface AppConfig {
   requestTimeoutMs: number;
   betterAuthSecret: string;
   betterAuthUrl: string;
+  betterAuthTrustedOrigins: string[];
   betterAuthDatabasePath: string;
   apiKeyPrefix: string;
   apiKeyRateLimitWindowMs: number;
@@ -46,6 +64,10 @@ export const config: AppConfig = {
   requestTimeoutMs: toInt(process.env.REQUEST_TIMEOUT_MS, 120000),
   betterAuthSecret: process.env.BETTER_AUTH_SECRET || "",
   betterAuthUrl: process.env.BETTER_AUTH_URL || "http://localhost:3000",
+  betterAuthTrustedOrigins: toStringArray(process.env.BETTER_AUTH_TRUSTED_ORIGINS, [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000"
+  ]),
   betterAuthDatabasePath: process.env.BETTER_AUTH_DATABASE_PATH || "./data/better-auth.db",
   apiKeyPrefix: process.env.API_KEY_PREFIX || "cpa_",
   apiKeyRateLimitWindowMs: toInt(process.env.API_KEY_RATE_LIMIT_WINDOW_MS, 60000),

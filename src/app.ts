@@ -7,6 +7,7 @@ import { auth } from "./auth";
 import { config } from "./config";
 import { HttpError } from "./lib/errors";
 import { authMiddleware } from "./middleware/auth";
+import { accountRouter } from "./routes/account";
 import { aiRouter } from "./routes/ai";
 
 const app = express();
@@ -30,6 +31,8 @@ app.get("/health", (_req, res) => {
 app.all("/api/auth/*", toNodeHandler(auth));
 
 app.use(express.json({ limit: "2mb" }));
+
+app.use("/account", accountRouter);
 
 app.use("/ai", authMiddleware, aiRouter);
 

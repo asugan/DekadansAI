@@ -48,12 +48,19 @@ export const authMiddleware: RequestHandler = (req, res, next) => {
       const code = errorAsObject.code || errorAsObject.body?.code || "";
       const message =
         (error instanceof Error ? error.message : "") || errorAsObject.body?.message || "";
+      const normalizedCode = code.toUpperCase();
 
       if (status === 429 || code === "RATE_LIMITED" || /rate limit/i.test(message)) {
         return res.status(429).json({ error: "rate_limit_exceeded" });
       }
 
-      if (status === 401) {
+      if (
+        status === 401 ||
+        status === 403 ||
+        normalizedCode.includes("INVALID_API") ||
+        normalizedCode.includes("API_KEY") ||
+        /invalid api key/i.test(message)
+      ) {
         return res.status(401).json({ error: "invalid_api_key" });
       }
 
