@@ -27,8 +27,8 @@ Opsiyonel ama onemli:
 - `BETTER_AUTH_URL` (ornek: `http://localhost:4000`)
 - `BETTER_AUTH_TRUSTED_ORIGINS` (ornek: `http://localhost:3000,http://127.0.0.1:3000`)
 - `BETTER_AUTH_DATABASE_PATH` (ornek: `./data/better-auth.db`)
-- `API_KEY_RATE_LIMIT_WINDOW_MS` (varsayilan: `60000`)
-- `API_KEY_RATE_LIMIT_MAX` (varsayilan: `30`)
+- `API_KEY_RATE_LIMIT_WINDOW_MS` (varsayilan: `86400000` -> 1 gun)
+- `API_KEY_RATE_LIMIT_MAX` (varsayilan: `800`)
 
 ## Better Auth migration
 

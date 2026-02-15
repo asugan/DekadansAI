@@ -70,8 +70,8 @@ export const config: AppConfig = {
   ]),
   betterAuthDatabasePath: process.env.BETTER_AUTH_DATABASE_PATH || "./data/better-auth.db",
   apiKeyPrefix: process.env.API_KEY_PREFIX || "cpa_",
-  apiKeyRateLimitWindowMs: toInt(process.env.API_KEY_RATE_LIMIT_WINDOW_MS, 60000),
-  apiKeyRateLimitMax: toInt(process.env.API_KEY_RATE_LIMIT_MAX, 30),
+  apiKeyRateLimitWindowMs: toInt(process.env.API_KEY_RATE_LIMIT_WINDOW_MS, 86400000),
+  apiKeyRateLimitMax: toInt(process.env.API_KEY_RATE_LIMIT_MAX, 800),
   codex53Model: process.env.CODEX53_MODEL || "gpt-5.3-codex",
   codex53ReasoningEffort: process.env.CODEX53_REASONING_EFFORT || "low"
 };
