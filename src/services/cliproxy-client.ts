@@ -4,16 +4,8 @@ import { type ReadableStream } from "node:stream/web";
 import { type Response as ExpressResponse } from "express";
 
 import { config } from "../config";
-import { HttpError } from "../lib/errors";
 
 type QueryParams = Record<string, string | number | boolean | null | undefined>;
-
-interface ManagementRequest {
-  method?: string;
-  pathname: string;
-  query?: QueryParams;
-  body?: unknown;
-}
 
 interface InferenceRequest {
   method?: string;
@@ -49,32 +41,6 @@ export async function decodeResponse(response: globalThis.Response): Promise<unk
   }
 
   return { raw };
-}
-
-export async function requestManagement({
-  method = "GET",
-  pathname,
-  query,
-  body
-}: ManagementRequest): Promise<unknown> {
-  const url = buildUrl(pathname, query);
-  const response = await fetch(url, {
-    method,
-    headers: {
-      Authorization: `Bearer ${config.cliProxyManagementKey}`,
-      ...(body ? { "Content-Type": "application/json" } : {})
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(config.requestTimeoutMs)
-  });
-
-  const data = await decodeResponse(response);
-
-  if (!response.ok) {
-    throw new HttpError("CLIProxyAPI management request failed", response.status, data);
-  }
-
-  return data;
 }
 
 export async function requestInference({

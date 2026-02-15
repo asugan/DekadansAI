@@ -29,6 +29,7 @@ module.exports = {
     "no-console": ["error", { allow: ["info", "warn", "error"] }],
     "no-implicit-coercion": "error",
     "import/newline-after-import": "error",
+    "import/no-named-as-default": "off",
     "import/no-named-as-default-member": "off",
     "import/no-unresolved": "error",
     "import/order": [

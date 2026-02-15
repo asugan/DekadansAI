@@ -9,30 +9,50 @@ function toInt(value: string | undefined, fallback: number): number {
   return Number.isNaN(parsed) ? fallback : parsed;
 }
 
+function toBoolean(value: string | undefined, fallback = false): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
 export interface AppConfig {
   port: number;
+  trustProxy: boolean;
   appApiKey: string;
   corsOrigin: string;
   cliProxyBaseUrl: string;
-  cliProxyManagementKey: string;
   cliProxyApiKey: string;
   requestTimeoutMs: number;
+  rateLimitWindowMs: number;
+  rateLimitAiMax: number;
+  rateLimitCodex53Max: number;
+  codex53Model: string;
+  codex53ReasoningEffort: string;
 }
 
 export const config: AppConfig = {
   port: toInt(process.env.PORT, 3000),
+  trustProxy: toBoolean(process.env.TRUST_PROXY, false),
   appApiKey: process.env.APP_API_KEY || "",
   corsOrigin: process.env.CORS_ORIGIN || "*",
   cliProxyBaseUrl: (process.env.CLI_PROXY_BASE_URL || "http://127.0.0.1:8317").replace(/\/$/, ""),
-  cliProxyManagementKey: process.env.CLI_PROXY_MANAGEMENT_KEY || "",
   cliProxyApiKey: process.env.CLI_PROXY_API_KEY || "",
-  requestTimeoutMs: toInt(process.env.REQUEST_TIMEOUT_MS, 120000)
+  requestTimeoutMs: toInt(process.env.REQUEST_TIMEOUT_MS, 120000),
+  rateLimitWindowMs: toInt(process.env.RATE_LIMIT_WINDOW_MS, 60000),
+  rateLimitAiMax: toInt(process.env.RATE_LIMIT_AI_MAX, 120),
+  rateLimitCodex53Max: toInt(process.env.RATE_LIMIT_CODEX53_MAX, 30),
+  codex53Model: process.env.CODEX53_MODEL || "gpt-5.3-codex",
+  codex53ReasoningEffort: process.env.CODEX53_REASONING_EFFORT || "low"
 };
 
 export function assertRequiredConfig(): void {
   const missing: string[] = [];
 
-  if (!config.cliProxyManagementKey) missing.push("CLI_PROXY_MANAGEMENT_KEY");
   if (!config.cliProxyApiKey) missing.push("CLI_PROXY_API_KEY");
 
   if (missing.length > 0) {
