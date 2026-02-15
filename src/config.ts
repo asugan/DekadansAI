@@ -23,14 +23,16 @@ function toBoolean(value: string | undefined, fallback = false): boolean {
 export interface AppConfig {
   port: number;
   trustProxy: boolean;
-  appApiKey: string;
   corsOrigin: string;
   cliProxyBaseUrl: string;
   cliProxyApiKey: string;
   requestTimeoutMs: number;
-  rateLimitWindowMs: number;
-  rateLimitAiMax: number;
-  rateLimitCodex53Max: number;
+  betterAuthSecret: string;
+  betterAuthUrl: string;
+  betterAuthDatabasePath: string;
+  apiKeyPrefix: string;
+  apiKeyRateLimitWindowMs: number;
+  apiKeyRateLimitMax: number;
   codex53Model: string;
   codex53ReasoningEffort: string;
 }
@@ -38,14 +40,16 @@ export interface AppConfig {
 export const config: AppConfig = {
   port: toInt(process.env.PORT, 3000),
   trustProxy: toBoolean(process.env.TRUST_PROXY, false),
-  appApiKey: process.env.APP_API_KEY || "",
   corsOrigin: process.env.CORS_ORIGIN || "*",
   cliProxyBaseUrl: (process.env.CLI_PROXY_BASE_URL || "http://127.0.0.1:8317").replace(/\/$/, ""),
   cliProxyApiKey: process.env.CLI_PROXY_API_KEY || "",
   requestTimeoutMs: toInt(process.env.REQUEST_TIMEOUT_MS, 120000),
-  rateLimitWindowMs: toInt(process.env.RATE_LIMIT_WINDOW_MS, 60000),
-  rateLimitAiMax: toInt(process.env.RATE_LIMIT_AI_MAX, 120),
-  rateLimitCodex53Max: toInt(process.env.RATE_LIMIT_CODEX53_MAX, 30),
+  betterAuthSecret: process.env.BETTER_AUTH_SECRET || "",
+  betterAuthUrl: process.env.BETTER_AUTH_URL || "http://localhost:3000",
+  betterAuthDatabasePath: process.env.BETTER_AUTH_DATABASE_PATH || "./data/better-auth.db",
+  apiKeyPrefix: process.env.API_KEY_PREFIX || "cpa_",
+  apiKeyRateLimitWindowMs: toInt(process.env.API_KEY_RATE_LIMIT_WINDOW_MS, 60000),
+  apiKeyRateLimitMax: toInt(process.env.API_KEY_RATE_LIMIT_MAX, 30),
   codex53Model: process.env.CODEX53_MODEL || "gpt-5.3-codex",
   codex53ReasoningEffort: process.env.CODEX53_REASONING_EFFORT || "low"
 };
@@ -54,6 +58,10 @@ export function assertRequiredConfig(): void {
   const missing: string[] = [];
 
   if (!config.cliProxyApiKey) missing.push("CLI_PROXY_API_KEY");
+  if (!config.betterAuthSecret) missing.push("BETTER_AUTH_SECRET");
+  if (config.betterAuthSecret.length < 32) {
+    throw new Error("BETTER_AUTH_SECRET must be at least 32 characters");
+  }
 
   if (missing.length > 0) {
     throw new Error(`Missing required env values: ${missing.join(", ")}`);

@@ -2,7 +2,6 @@ import express, { type Request, type Response } from "express";
 
 import { config } from "../config";
 import { asyncHandler } from "../lib/async-handler";
-import { aiRateLimiter, codex53RateLimiter } from "../middleware/rate-limit";
 import {
   decodeResponse,
   pipeUpstreamResponse,
@@ -75,7 +74,6 @@ async function proxyJsonRequest(
 
 router.get(
   "/models",
-  aiRateLimiter,
   asyncHandler(async (_req, res) => {
     const upstreamResponse = await requestInference({ method: "GET", pathname: "/v1/models" });
     const payload = await decodeResponse(upstreamResponse);
@@ -85,7 +83,6 @@ router.get(
 
 router.post(
   "/chat/completions",
-  aiRateLimiter,
   asyncHandler(async (req, res) => {
     await proxyJsonRequest(req, res, "/v1/chat/completions");
   })
@@ -93,7 +90,6 @@ router.post(
 
 router.post(
   "/responses",
-  aiRateLimiter,
   asyncHandler(async (req, res) => {
     await proxyJsonRequest(req, res, "/v1/responses");
   })
@@ -101,7 +97,6 @@ router.post(
 
 router.post(
   "/codex-5.3/chat/completions",
-  codex53RateLimiter,
   asyncHandler(async (req, res) => {
     const payload = codex53ChatPayload(req.body);
     await proxyJsonRequest(req, res, "/v1/chat/completions", payload);
@@ -110,7 +105,6 @@ router.post(
 
 router.post(
   "/codex-5.3/responses",
-  codex53RateLimiter,
   asyncHandler(async (req, res) => {
     const payload = codex53ResponsesPayload(req.body);
     await proxyJsonRequest(req, res, "/v1/responses", payload);

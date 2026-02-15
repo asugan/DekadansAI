@@ -1,7 +1,9 @@
+import { toNodeHandler } from "better-auth/node";
 import cors from "cors";
 import express, { type ErrorRequestHandler } from "express";
 import helmet from "helmet";
 
+import { auth } from "./auth";
 import { config } from "./config";
 import { HttpError } from "./lib/errors";
 import { authMiddleware } from "./middleware/auth";
@@ -16,17 +18,20 @@ if (config.trustProxy) {
 app.use(helmet());
 app.use(
   cors({
-    origin: config.corsOrigin === "*" ? true : config.corsOrigin.split(",").map((item) => item.trim())
+    origin: config.corsOrigin === "*" ? true : config.corsOrigin.split(",").map((item) => item.trim()),
+    credentials: true
   })
 );
-app.use(express.json({ limit: "2mb" }));
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.use(authMiddleware);
-app.use("/ai", aiRouter);
+app.all("/api/auth/*", toNodeHandler(auth));
+
+app.use(express.json({ limit: "2mb" }));
+
+app.use("/ai", authMiddleware, aiRouter);
 
 app.use((_req, _res, next) => {
   next(new HttpError("not found", 404));
