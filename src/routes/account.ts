@@ -4,6 +4,8 @@ import express from "express";
 import { auth } from "../auth";
 import { config } from "../config";
 import { asyncHandler } from "../lib/async-handler";
+import { polarClient } from "../lib/polar";
+import { getWeeklyPlanStatus, isPolarNotFound } from "../lib/polar-state";
 
 const router = express.Router();
 
@@ -86,6 +88,42 @@ function toIso(value: number | null): string | null {
   if (value === null) return null;
   return new Date(value).toISOString();
 }
+
+router.get(
+  "/billing",
+  asyncHandler(async (req, res) => {
+    const headers = fromNodeHeaders(req.headers);
+    const session = await auth.api.getSession({ headers });
+
+    if (!session?.user) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+
+    try {
+      const customerState = await polarClient.customers.getStateExternal({
+        externalId: session.user.id
+      });
+      const weeklyPlan = getWeeklyPlanStatus(customerState);
+
+      return res.json({
+        generatedAt: new Date().toISOString(),
+        weeklyPlan
+      });
+    } catch (error) {
+      if (isPolarNotFound(error)) {
+        return res.json({
+          generatedAt: new Date().toISOString(),
+          weeklyPlan: {
+            active: false,
+            customerExists: false
+          }
+        });
+      }
+
+      throw error;
+    }
+  })
+);
 
 router.get(
   "/rate-limit",

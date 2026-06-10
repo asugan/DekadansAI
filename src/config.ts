@@ -41,6 +41,7 @@ export interface AppConfig {
   port: number;
   trustProxy: boolean;
   corsOrigin: string;
+  frontendAppUrl: string;
   cliProxyBaseUrl: string;
   cliProxyApiKey: string;
   requestTimeoutMs: number;
@@ -51,6 +52,12 @@ export interface AppConfig {
   apiKeyPrefix: string;
   apiKeyRateLimitWindowMs: number;
   apiKeyRateLimitMax: number;
+  polarAccessToken: string;
+  polarWebhookSecret: string;
+  polarEnvironment: "sandbox" | "production";
+  polarWeeklyProductId: string;
+  polarCheckoutSuccessUrl: string;
+  polarPortalReturnUrl: string;
   codex53Model: string;
   codex53ReasoningEffort: string;
 }
@@ -59,6 +66,7 @@ export const config: AppConfig = {
   port: toInt(process.env.PORT, 3000),
   trustProxy: toBoolean(process.env.TRUST_PROXY, false),
   corsOrigin: process.env.CORS_ORIGIN || "*",
+  frontendAppUrl: (process.env.FRONTEND_APP_URL || "http://localhost:3000").replace(/\/$/, ""),
   cliProxyBaseUrl: (process.env.CLI_PROXY_BASE_URL || "http://127.0.0.1:8317").replace(/\/$/, ""),
   cliProxyApiKey: process.env.CLI_PROXY_API_KEY || "",
   requestTimeoutMs: toInt(process.env.REQUEST_TIMEOUT_MS, 120000),
@@ -72,6 +80,16 @@ export const config: AppConfig = {
   apiKeyPrefix: process.env.API_KEY_PREFIX || "cpa_",
   apiKeyRateLimitWindowMs: toInt(process.env.API_KEY_RATE_LIMIT_WINDOW_MS, 86400000),
   apiKeyRateLimitMax: toInt(process.env.API_KEY_RATE_LIMIT_MAX, 800),
+  polarAccessToken: process.env.POLAR_ACCESS_TOKEN || "",
+  polarWebhookSecret: process.env.POLAR_WEBHOOK_SECRET || "",
+  polarEnvironment: process.env.POLAR_ENVIRONMENT === "production" ? "production" : "sandbox",
+  polarWeeklyProductId: process.env.POLAR_WEEKLY_PRODUCT_ID || "",
+  polarCheckoutSuccessUrl:
+    process.env.POLAR_CHECKOUT_SUCCESS_URL ||
+    `${(process.env.FRONTEND_APP_URL || "http://localhost:3000").replace(/\/$/, "")}/dashboard?checkout=success`,
+  polarPortalReturnUrl:
+    process.env.POLAR_PORTAL_RETURN_URL ||
+    `${(process.env.FRONTEND_APP_URL || "http://localhost:3000").replace(/\/$/, "")}/dashboard`,
   codex53Model: process.env.CODEX53_MODEL || "gpt-5.3-codex",
   codex53ReasoningEffort: process.env.CODEX53_REASONING_EFFORT || "low"
 };
@@ -81,6 +99,9 @@ export function assertRequiredConfig(): void {
 
   if (!config.cliProxyApiKey) missing.push("CLI_PROXY_API_KEY");
   if (!config.betterAuthSecret) missing.push("BETTER_AUTH_SECRET");
+  if (!config.polarAccessToken) missing.push("POLAR_ACCESS_TOKEN");
+  if (!config.polarWebhookSecret) missing.push("POLAR_WEBHOOK_SECRET");
+  if (!config.polarWeeklyProductId) missing.push("POLAR_WEEKLY_PRODUCT_ID");
   if (config.betterAuthSecret.length < 32) {
     throw new Error("BETTER_AUTH_SECRET must be at least 32 characters");
   }

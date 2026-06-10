@@ -35,6 +35,7 @@ export const authMiddleware: RequestHandler = (req, res, next) => {
         return res.status(401).json({ error: "invalid_api_key" });
       }
 
+      res.locals.userId = session.user.id;
       return next();
     } catch (error) {
       const errorAsObject = error as {

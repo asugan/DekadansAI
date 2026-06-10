@@ -7,6 +7,7 @@ import { auth } from "./auth";
 import { config } from "./config";
 import { HttpError } from "./lib/errors";
 import { authMiddleware } from "./middleware/auth";
+import { weeklyPlanMiddleware } from "./middleware/weekly-plan";
 import { accountRouter } from "./routes/account";
 import { aiRouter } from "./routes/ai";
 
@@ -34,7 +35,7 @@ app.use(express.json({ limit: "2mb" }));
 
 app.use("/account", accountRouter);
 
-app.use("/ai", authMiddleware, aiRouter);
+app.use("/ai", authMiddleware, weeklyPlanMiddleware, aiRouter);
 
 app.use((_req, _res, next) => {
   next(new HttpError("not found", 404));
