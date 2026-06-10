@@ -2,7 +2,7 @@ import { fromNodeHeaders } from "better-auth/node";
 import express from "express";
 
 import { auth } from "../auth";
-import { config } from "../config";
+import { getAccountRateLimitSnapshot } from "../lib/account-rate-limit";
 import { asyncHandler } from "../lib/async-handler";
 import { polarClient } from "../lib/polar";
 import { getWeeklyPlanStatus, isPolarNotFound } from "../lib/polar-state";
@@ -16,12 +16,7 @@ interface AccountRateLimitKey {
   name: string | null;
   start: string | null;
   enabled: boolean;
-  windowMs: number;
-  max: number;
-  used: number;
-  remaining: number;
   lastRequestAt: string | null;
-  resetAt: string;
 }
 
 function asObject(value: unknown): JsonObject {
@@ -39,21 +34,6 @@ function toBoolean(value: unknown, fallback: boolean): boolean {
     const normalized = value.trim().toLowerCase();
     if (["true", "1", "yes", "on"].includes(normalized)) return true;
     if (["false", "0", "no", "off"].includes(normalized)) return false;
-  }
-
-  return fallback;
-}
-
-function toNumber(value: unknown, fallback: number): number {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const parsed = Number.parseInt(value, 10);
-    if (!Number.isNaN(parsed)) {
-      return parsed;
-    }
   }
 
   return fallback;
@@ -137,6 +117,7 @@ router.get(
 
     const apiKeys = await auth.api.listApiKeys({ headers });
     const now = Date.now();
+    const accountSnapshot = getAccountRateLimitSnapshot(session.user.id, now);
     const normalizedKeys: AccountRateLimitKey[] = [];
 
     for (const key of apiKeys) {
@@ -145,32 +126,14 @@ router.get(
       if (!id) continue;
 
       const enabled = toBoolean(keyAsObject.enabled, true);
-      const isRateLimitEnabled = toBoolean(keyAsObject.rateLimitEnabled, true);
-      const windowMs = Math.max(
-        1,
-        toNumber(keyAsObject.rateLimitTimeWindow, config.apiKeyRateLimitWindowMs)
-      );
-      const max = Math.max(0, toNumber(keyAsObject.rateLimitMax, config.apiKeyRateLimitMax));
-      const requestCount = Math.max(0, toNumber(keyAsObject.requestCount, 0));
       const lastRequestTimestamp = toTimestamp(keyAsObject.lastRequest);
-      const isWithinWindow =
-        lastRequestTimestamp !== null && now - lastRequestTimestamp <= windowMs;
-      const used = enabled && isRateLimitEnabled && isWithinWindow ? requestCount : 0;
-      const remaining = enabled && isRateLimitEnabled ? Math.max(0, max - used) : max;
-      const resetBase = isWithinWindow && lastRequestTimestamp !== null ? lastRequestTimestamp : now;
-      const resetAt = toIso(resetBase + windowMs) || new Date(now + windowMs).toISOString();
 
       normalizedKeys.push({
         id,
         name: typeof keyAsObject.name === "string" ? keyAsObject.name : null,
         start: typeof keyAsObject.start === "string" ? keyAsObject.start : null,
         enabled,
-        windowMs,
-        max,
-        used,
-        remaining,
-        lastRequestAt: toIso(lastRequestTimestamp),
-        resetAt
+        lastRequestAt: toIso(lastRequestTimestamp)
       });
     }
 
@@ -180,40 +143,21 @@ router.get(
       return aName.localeCompare(bName);
     });
 
-    const overview = normalizedKeys.reduce(
-      (acc, key) => {
-        if (!key.enabled) return acc;
-
-        acc.totalMax += key.max;
-        acc.totalUsed += key.used;
-        acc.totalRemaining += key.remaining;
-
-        const resetTimestamp = Date.parse(key.resetAt);
-        if (!Number.isNaN(resetTimestamp)) {
-          if (acc.nextResetAt === null || resetTimestamp < Date.parse(acc.nextResetAt)) {
-            acc.nextResetAt = key.resetAt;
-          }
-        }
-
-        return acc;
-      },
-      {
-        activeKeys: 0,
-        totalMax: 0,
-        totalUsed: 0,
-        totalRemaining: 0,
-        nextResetAt: null as string | null
-      }
-    );
-
-    overview.activeKeys = normalizedKeys.filter((key) => key.enabled).length;
+    const overview = {
+      activeKeys: normalizedKeys.filter((key) => key.enabled).length,
+      totalMax: accountSnapshot.quota.max,
+      totalUsed: accountSnapshot.quota.used,
+      totalRemaining: accountSnapshot.quota.remaining,
+      nextResetAt: accountSnapshot.quota.resetAt
+    };
 
     return res.json({
       generatedAt: new Date(now).toISOString(),
       defaults: {
-        windowMs: config.apiKeyRateLimitWindowMs,
-        max: config.apiKeyRateLimitMax
+        windowMs: accountSnapshot.quota.windowMs,
+        max: accountSnapshot.quota.max
       },
+      account: accountSnapshot,
       overview,
       keys: normalizedKeys
     });

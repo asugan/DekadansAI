@@ -50,8 +50,10 @@ export interface AppConfig {
   betterAuthTrustedOrigins: string[];
   betterAuthDatabasePath: string;
   apiKeyPrefix: string;
-  apiKeyRateLimitWindowMs: number;
-  apiKeyRateLimitMax: number;
+  accountQuotaWindowMs: number;
+  accountQuotaMax: number;
+  accountBurstWindowMs: number;
+  accountBurstMax: number;
   polarAccessToken: string;
   polarWebhookSecret: string;
   polarEnvironment: "sandbox" | "production";
@@ -78,8 +80,10 @@ export const config: AppConfig = {
   ]),
   betterAuthDatabasePath: process.env.BETTER_AUTH_DATABASE_PATH || "./data/better-auth.db",
   apiKeyPrefix: process.env.API_KEY_PREFIX || "cpa_",
-  apiKeyRateLimitWindowMs: toInt(process.env.API_KEY_RATE_LIMIT_WINDOW_MS, 86400000),
-  apiKeyRateLimitMax: toInt(process.env.API_KEY_RATE_LIMIT_MAX, 800),
+  accountQuotaWindowMs: toInt(process.env.ACCOUNT_QUOTA_WINDOW_MS, 18000000),
+  accountQuotaMax: toInt(process.env.ACCOUNT_QUOTA_MAX, 500),
+  accountBurstWindowMs: toInt(process.env.ACCOUNT_BURST_WINDOW_MS, 20000),
+  accountBurstMax: toInt(process.env.ACCOUNT_BURST_MAX, 5),
   polarAccessToken: process.env.POLAR_ACCESS_TOKEN || "",
   polarWebhookSecret: process.env.POLAR_WEBHOOK_SECRET || "",
   polarEnvironment: process.env.POLAR_ENVIRONMENT === "production" ? "production" : "sandbox",
