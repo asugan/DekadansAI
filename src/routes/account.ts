@@ -6,6 +6,7 @@ import { getAccountRateLimitSnapshot } from "../lib/account-rate-limit";
 import { asyncHandler } from "../lib/async-handler";
 import { polarClient } from "../lib/polar";
 import { getWeeklyPlanStatus, isPolarNotFound } from "../lib/polar-state";
+import { decodeResponse, requestInference } from "../services/cliproxy-client";
 
 const router = express.Router();
 
@@ -17,6 +18,13 @@ interface AccountRateLimitKey {
   start: string | null;
   enabled: boolean;
   lastRequestAt: string | null;
+}
+
+interface AccountModel {
+  id: string;
+  name: string;
+  provider: string | null;
+  enabled: boolean;
 }
 
 function asObject(value: unknown): JsonObject {
@@ -67,6 +75,67 @@ function toTimestamp(value: unknown): number | null {
 function toIso(value: number | null): string | null {
   if (value === null) return null;
   return new Date(value).toISOString();
+}
+
+function humanizeModelName(id: string): string {
+  return id
+    .split(/[-_:./]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function providerFromModel(model: JsonObject, id: string): string | null {
+  const provider = model.provider || model.owned_by || model.owner;
+  if (typeof provider === "string" && provider.trim()) {
+    return provider;
+  }
+
+  const [prefix] = id.split(/[-_:./]+/);
+  return prefix ? prefix.toLowerCase() : null;
+}
+
+function normalizeModels(payload: unknown): AccountModel[] {
+  const root = asObject(payload);
+  const rawModels = Array.isArray(root.data)
+    ? root.data
+    : Array.isArray(root.models)
+      ? root.models
+      : Array.isArray(payload)
+        ? payload
+        : [];
+
+  const models = rawModels
+    .map((entry): AccountModel | null => {
+      if (typeof entry === "string") {
+        return {
+          id: entry,
+          name: humanizeModelName(entry),
+          provider: providerFromModel({}, entry),
+          enabled: true
+        } satisfies AccountModel;
+      }
+
+      const model = asObject(entry);
+      const idValue = model.id || model.name || model.model;
+      const id = typeof idValue === "string" ? idValue.trim() : "";
+      if (!id) return null;
+
+      const nameValue = model.displayName || model.display_name || model.label || model.name;
+      const enabled = toBoolean(model.enabled ?? model.active ?? model.available, true);
+
+      if (!enabled) return null;
+
+      return {
+        id,
+        name: typeof nameValue === "string" && nameValue.trim() ? nameValue : humanizeModelName(id),
+        provider: providerFromModel(model, id),
+        enabled
+      } satisfies AccountModel;
+    })
+    .filter((entry): entry is AccountModel => entry !== null);
+
+  return models.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 router.get(
@@ -160,6 +229,30 @@ router.get(
       account: accountSnapshot,
       overview,
       keys: normalizedKeys
+    });
+  })
+);
+
+router.get(
+  "/models",
+  asyncHandler(async (req, res) => {
+    const headers = fromNodeHeaders(req.headers);
+    const session = await auth.api.getSession({ headers });
+
+    if (!session?.user) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+
+    const upstreamResponse = await requestInference({ method: "GET", pathname: "/v1/models" });
+    const payload = await decodeResponse(upstreamResponse);
+
+    if (!upstreamResponse.ok) {
+      return res.status(upstreamResponse.status).json(payload || { error: "models_unavailable" });
+    }
+
+    return res.json({
+      generatedAt: new Date().toISOString(),
+      data: normalizeModels(payload)
     });
   })
 );

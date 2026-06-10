@@ -47,6 +47,23 @@ function codex53ResponsesPayload(body: unknown): JsonObject {
   };
 }
 
+function getRequestedModel(body: unknown): string {
+  const payload = asObject(body);
+  return typeof payload.model === "string" ? payload.model.trim() : "";
+}
+
+function requireModel(req: Request, res: Response): boolean {
+  if (getRequestedModel(req.body)) {
+    return true;
+  }
+
+  res.status(400).json({
+    error: "missing_model",
+    message: "Request body must include a model id."
+  });
+  return false;
+}
+
 async function proxyJsonRequest(
   req: Request,
   res: Response,
@@ -84,6 +101,7 @@ router.get(
 router.post(
   "/chat/completions",
   asyncHandler(async (req, res) => {
+    if (!requireModel(req, res)) return;
     await proxyJsonRequest(req, res, "/v1/chat/completions");
   })
 );
@@ -91,6 +109,7 @@ router.post(
 router.post(
   "/responses",
   asyncHandler(async (req, res) => {
+    if (!requireModel(req, res)) return;
     await proxyJsonRequest(req, res, "/v1/responses");
   })
 );
