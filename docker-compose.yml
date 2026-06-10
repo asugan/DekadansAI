@@ -1,0 +1,26 @@
+services:
+  cliproxy-bff-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cliproxy-bff-api:latest
+    container_name: cliproxy-bff-api
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT:-4000}
+      FRONTEND_APP_URL: ${FRONTEND_APP_URL:-http://localhost:3000}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}
+      BETTER_AUTH_DATABASE_PATH: ${BETTER_AUTH_DATABASE_PATH:-./data/better-auth.db}
+      CLI_PROXY_BASE_URL: ${CLI_PROXY_BASE_URL:-http://host.docker.internal:8317}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    ports:
+      - "4000:4000"
+    volumes:
+      - cliproxy-data:/app/data
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  cliproxy-data:
