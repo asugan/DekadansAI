@@ -1,4 +1,25 @@
 services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migration
+    image: cliproxy-bff-api:migration
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT:-4000}
+      FRONTEND_APP_URL: ${FRONTEND_APP_URL:-http://localhost:3000}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}
+      BETTER_AUTH_DATABASE_PATH: ${BETTER_AUTH_DATABASE_PATH:-./data/better-auth.db}
+      CLI_PROXY_BASE_URL: ${CLI_PROXY_BASE_URL:-http://host.docker.internal:8317}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    volumes:
+      - cliproxy-data:/app/data
+    restart: "no"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   cliproxy-bff-api:
     build:
       context: .
@@ -18,6 +39,9 @@ services:
       - "4000:4000"
     volumes:
       - cliproxy-data:/app/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
