@@ -41,7 +41,10 @@ export const auth = betterAuth({
     }),
     apiKey({
       defaultPrefix: config.apiKeyPrefix,
-      enableSessionForAPIKeys: true
+      enableSessionForAPIKeys: true,
+      rateLimit: {
+        enabled: false
+      }
     })
   ]
 });
