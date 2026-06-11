@@ -31,6 +31,7 @@ export interface AccountRateLimitSnapshot {
 export interface AccountRateLimitResult {
   allowed: boolean;
   reason?: "quota" | "burst";
+  quotaCost: number;
   retryAfterMs: number;
   snapshot: AccountRateLimitSnapshot;
 }
@@ -126,14 +127,24 @@ export function getAccountRateLimitSnapshot(userId: string, now = Date.now()): A
   return buildSnapshot(row);
 }
 
-export function consumeAccountRateLimit(userId: string, now = Date.now()): AccountRateLimitResult {
-  const row = normalizeRow(userId, now, getRow.get(userId) as RateLimitRow | undefined);
+export function getModelRequestCost(model: string): number {
+  return config.modelRequestCosts[model] || config.defaultModelRequestCost;
+}
 
-  if (row.quotaRequestCount >= config.accountQuotaMax) {
+export function consumeAccountRateLimit(
+  userId: string,
+  quotaCost = config.defaultModelRequestCost,
+  now = Date.now()
+): AccountRateLimitResult {
+  const row = normalizeRow(userId, now, getRow.get(userId) as RateLimitRow | undefined);
+  const safeQuotaCost = Math.max(1, Math.floor(quotaCost));
+
+  if (row.quotaRequestCount + safeQuotaCost > config.accountQuotaMax) {
     upsertRow.run(row);
     return {
       allowed: false,
       reason: "quota",
+      quotaCost: safeQuotaCost,
       retryAfterMs: Math.max(0, row.quotaWindowStartedAt + config.accountQuotaWindowMs - now),
       snapshot: buildSnapshot(row)
     };
@@ -144,6 +155,7 @@ export function consumeAccountRateLimit(userId: string, now = Date.now()): Accou
     return {
       allowed: false,
       reason: "burst",
+      quotaCost: safeQuotaCost,
       retryAfterMs: Math.max(0, row.burstWindowStartedAt + config.accountBurstWindowMs - now),
       snapshot: buildSnapshot(row)
     };
@@ -151,7 +163,7 @@ export function consumeAccountRateLimit(userId: string, now = Date.now()): Accou
 
   const updatedRow: RateLimitRow = {
     ...row,
-    quotaRequestCount: row.quotaRequestCount + 1,
+    quotaRequestCount: row.quotaRequestCount + safeQuotaCost,
     burstRequestCount: row.burstRequestCount + 1,
     updatedAt: now
   };
@@ -159,6 +171,7 @@ export function consumeAccountRateLimit(userId: string, now = Date.now()): Accou
 
   return {
     allowed: true,
+    quotaCost: safeQuotaCost,
     retryAfterMs: 0,
     snapshot: buildSnapshot(updatedRow)
   };

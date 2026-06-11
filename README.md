@@ -63,8 +63,8 @@ npm start
 - `GET /ai/models`
 - `POST /ai/chat/completions`
 - `POST /ai/responses`
-- `POST /ai/codex-5.3/chat/completions`
-- `POST /ai/codex-5.3/responses`
+- `POST /ai/default/chat/completions`
+- `POST /ai/default/responses`
 
 ### Session Protected (login cookie)
 
@@ -113,10 +113,10 @@ curl http://localhost:4000/ai/models \
   -H 'x-api-key: <API_KEY>'
 ```
 
-Codex 5.3 endpointi:
+Default model endpointi:
 
 ```bash
-curl -X POST http://localhost:4000/ai/codex-5.3/chat/completions \
+curl -X POST http://localhost:4000/ai/default/chat/completions \
   -H 'Content-Type: application/json' \
   -H 'x-api-key: <API_KEY>' \
   -d '{"messages":[{"role":"user","content":"Merhaba"}],"stream":false}'

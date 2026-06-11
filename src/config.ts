@@ -37,6 +37,32 @@ function toStringArray(value: string | undefined, fallback: string[] = []): stri
   return parsed;
 }
 
+function toPositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = toInt(value, fallback);
+  return parsed > 0 ? parsed : fallback;
+}
+
+function toModelRequestCosts(
+  value: string | undefined,
+  fallback: Record<string, number>
+): Record<string, number> {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  return value.split(",").reduce<Record<string, number>>((costs, entry) => {
+    const [rawModel, rawCost] = entry.split(":");
+    const model = rawModel?.trim();
+    const cost = toInt(rawCost?.trim(), 0);
+
+    if (model && cost > 0) {
+      costs[model] = cost;
+    }
+
+    return costs;
+  }, {});
+}
+
 export interface AppConfig {
   port: number;
   trustProxy: boolean;
@@ -52,6 +78,8 @@ export interface AppConfig {
   apiKeyPrefix: string;
   accountQuotaWindowMs: number;
   accountQuotaMax: number;
+  defaultModelRequestCost: number;
+  modelRequestCosts: Record<string, number>;
   accountBurstWindowMs: number;
   accountBurstMax: number;
   polarAccessToken: string;
@@ -60,8 +88,8 @@ export interface AppConfig {
   polarWeeklyProductId: string;
   polarCheckoutSuccessUrl: string;
   polarPortalReturnUrl: string;
-  codex53Model: string;
-  codex53ReasoningEffort: string;
+  defaultModel: string;
+  defaultReasoningEffort: string;
 }
 
 export const config: AppConfig = {
@@ -82,6 +110,11 @@ export const config: AppConfig = {
   apiKeyPrefix: process.env.API_KEY_PREFIX || "cpa_",
   accountQuotaWindowMs: toInt(process.env.ACCOUNT_QUOTA_WINDOW_MS, 18000000),
   accountQuotaMax: toInt(process.env.ACCOUNT_QUOTA_MAX, 500),
+  defaultModelRequestCost: toPositiveInt(process.env.DEFAULT_MODEL_REQUEST_COST, 1),
+  modelRequestCosts: toModelRequestCosts(process.env.MODEL_REQUEST_COSTS, {
+    "gpt-5.5": 3,
+    "kimi-k2.6": 1
+  }),
   accountBurstWindowMs: toInt(process.env.ACCOUNT_BURST_WINDOW_MS, 20000),
   accountBurstMax: toInt(process.env.ACCOUNT_BURST_MAX, 5),
   polarAccessToken: process.env.POLAR_ACCESS_TOKEN || "",
@@ -94,8 +127,8 @@ export const config: AppConfig = {
   polarPortalReturnUrl:
     process.env.POLAR_PORTAL_RETURN_URL ||
     `${(process.env.FRONTEND_APP_URL || "http://localhost:3000").replace(/\/$/, "")}/dashboard`,
-  codex53Model: process.env.CODEX53_MODEL || "gpt-5.3-codex",
-  codex53ReasoningEffort: process.env.CODEX53_REASONING_EFFORT || "low"
+  defaultModel: process.env.DEFAULT_MODEL || "gpt-5.3-codex",
+  defaultReasoningEffort: process.env.DEFAULT_REASONING_EFFORT || "low"
 };
 
 export function assertRequiredConfig(): void {

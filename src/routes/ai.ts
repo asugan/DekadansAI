@@ -20,29 +20,29 @@ function asObject(value: unknown): JsonObject {
   return {};
 }
 
-function codex53ChatPayload(body: unknown): JsonObject {
+function defaultChatPayload(body: unknown): JsonObject {
   const payload = asObject(body);
 
   return {
     ...payload,
-    model: config.codex53Model,
+    model: config.defaultModel,
     reasoning_effort:
-      payload.reasoning_effort === undefined ? config.codex53ReasoningEffort : payload.reasoning_effort
+      payload.reasoning_effort === undefined ? config.defaultReasoningEffort : payload.reasoning_effort
   };
 }
 
-function codex53ResponsesPayload(body: unknown): JsonObject {
+function defaultResponsesPayload(body: unknown): JsonObject {
   const payload = asObject(body);
   const reasoning = asObject(payload.reasoning);
 
   return {
     ...payload,
-    model: config.codex53Model,
+    model: config.defaultModel,
     reasoning:
       Object.keys(reasoning).length > 0
         ? reasoning
         : {
-            effort: config.codex53ReasoningEffort
+            effort: config.defaultReasoningEffort
           }
   };
 }
@@ -115,17 +115,17 @@ router.post(
 );
 
 router.post(
-  "/codex-5.3/chat/completions",
+  "/default/chat/completions",
   asyncHandler(async (req, res) => {
-    const payload = codex53ChatPayload(req.body);
+    const payload = defaultChatPayload(req.body);
     await proxyJsonRequest(req, res, "/v1/chat/completions", payload);
   })
 );
 
 router.post(
-  "/codex-5.3/responses",
+  "/default/responses",
   asyncHandler(async (req, res) => {
-    const payload = codex53ResponsesPayload(req.body);
+    const payload = defaultResponsesPayload(req.body);
     await proxyJsonRequest(req, res, "/v1/responses", payload);
   })
 );
