@@ -6,6 +6,7 @@ import helmet from "helmet";
 import { auth } from "./auth";
 import { config } from "./config";
 import { HttpError } from "./lib/errors";
+import { fetchModelCatalog } from "./lib/model-catalog";
 import { accountRateLimitMiddleware } from "./middleware/account-rate-limit";
 import { authMiddleware } from "./middleware/auth";
 import { weeklyPlanMiddleware } from "./middleware/weekly-plan";
@@ -28,6 +29,23 @@ app.use(
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
+});
+
+app.get("/models", async (_req, res, next) => {
+  try {
+    const catalog = await fetchModelCatalog();
+
+    if (!catalog.ok) {
+      return res.status(catalog.status).json(catalog.payload || { error: "models_unavailable" });
+    }
+
+    return res.json({
+      generatedAt: new Date().toISOString(),
+      data: catalog.models
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.all("/api/auth/*", toNodeHandler(auth));
