@@ -2,6 +2,7 @@ import { fromNodeHeaders } from "better-auth/node";
 import express from "express";
 
 import { auth } from "../auth";
+import { config } from "../config";
 import { getAccountRateLimitSnapshot } from "../lib/account-rate-limit";
 import { asyncHandler } from "../lib/async-handler";
 import { fetchModelCatalog } from "../lib/model-catalog";
@@ -88,7 +89,25 @@ router.get(
 
       return res.json({
         generatedAt: new Date().toISOString(),
-        weeklyPlan
+        weeklyPlan: {
+          active: weeklyPlan.active,
+          tierSlug: weeklyPlan.tierSlug,
+          tier: weeklyPlan.tier
+            ? {
+                slug: weeklyPlan.tier.slug,
+                label: weeklyPlan.tier.label,
+                quotaMax: weeklyPlan.tier.quotaMax,
+                weeklyQuotaMax: weeklyPlan.tier.weeklyQuotaMax
+              }
+            : null,
+          customerExists: weeklyPlan.customerExists
+        },
+        planTiers: config.planTiers.map((t) => ({
+          slug: t.slug,
+          label: t.label,
+          quotaMax: t.quotaMax,
+          weeklyQuotaMax: t.weeklyQuotaMax
+        }))
       });
     } catch (error) {
       if (isPolarNotFound(error)) {
@@ -96,8 +115,16 @@ router.get(
           generatedAt: new Date().toISOString(),
           weeklyPlan: {
             active: false,
+            tierSlug: null,
+            tier: null,
             customerExists: false
-          }
+          },
+          planTiers: config.planTiers.map((t) => ({
+            slug: t.slug,
+            label: t.label,
+            quotaMax: t.quotaMax,
+            weeklyQuotaMax: t.weeklyQuotaMax
+          }))
         });
       }
 
@@ -116,9 +143,23 @@ router.get(
       return res.status(401).json({ error: "unauthorized" });
     }
 
+    // Determine plan tier for this user
+    let planTier = config.planTiers[0];
+    try {
+      const customerState = await polarClient.customers.getStateExternal({
+        externalId: session.user.id
+      });
+      const planStatus = getWeeklyPlanStatus(customerState);
+      if (planStatus.tier) {
+        planTier = planStatus.tier;
+      }
+    } catch {
+      // fallback to first tier
+    }
+
     const apiKeys = await auth.api.listApiKeys({ headers });
     const now = Date.now();
-    const accountSnapshot = getAccountRateLimitSnapshot(session.user.id, now);
+    const accountSnapshot = getAccountRateLimitSnapshot(session.user.id, planTier, now);
     const normalizedKeys: AccountRateLimitKey[] = [];
 
     for (const key of apiKeys) {
@@ -157,6 +198,12 @@ router.get(
       defaults: {
         windowMs: accountSnapshot.quota.windowMs,
         max: accountSnapshot.quota.max
+      },
+      tier: {
+        slug: planTier.slug,
+        label: planTier.label,
+        quotaMax: planTier.quotaMax,
+        weeklyQuotaMax: planTier.weeklyQuotaMax
       },
       account: accountSnapshot,
       overview,

@@ -1,6 +1,6 @@
 import { type RequestHandler } from "express";
 
-import { config } from "../config";
+import { config, type PlanTierConfig } from "../config";
 import { consumeAccountRateLimit, getModelRequestCost } from "../lib/account-rate-limit";
 
 function getRequestedModel(reqPath: string, body: unknown): string {
@@ -14,6 +14,14 @@ function getRequestedModel(reqPath: string, body: unknown): string {
   return reqPath.startsWith("/default/") ? config.defaultModel : "";
 }
 
+function getPlanTierOrDefault(tier?: PlanTierConfig): PlanTierConfig {
+  if (tier) return tier;
+  // fallback: first tier in config
+  if (config.planTiers.length > 0) return config.planTiers[0];
+  // hardcoded safe fallback
+  return { productId: "", slug: "default", label: "Default", quotaMax: 500, weeklyQuotaMax: 8000 };
+}
+
 export const accountRateLimitMiddleware: RequestHandler = (req, res, next) => {
   const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
 
@@ -21,8 +29,9 @@ export const accountRateLimitMiddleware: RequestHandler = (req, res, next) => {
     return res.status(401).json({ error: "unauthorized" });
   }
 
+  const planTier = getPlanTierOrDefault(res.locals.planTier);
   const model = getRequestedModel(req.path, req.body);
-  const result = consumeAccountRateLimit(userId, model ? getModelRequestCost(model) : undefined);
+  const result = consumeAccountRateLimit(userId, planTier, model ? getModelRequestCost(model) : undefined);
 
   res.setHeader("RateLimit-Limit", String(result.snapshot.quota.max));
   res.setHeader("RateLimit-Remaining", String(result.snapshot.quota.remaining));
@@ -31,6 +40,10 @@ export const accountRateLimitMiddleware: RequestHandler = (req, res, next) => {
     "RateLimit-Reset",
     String(Math.ceil(new Date(result.snapshot.quota.resetAt).getTime() / 1000))
   );
+  if (result.snapshot.weekly) {
+    res.setHeader("X-Weekly-Limit", String(result.snapshot.weekly.max));
+    res.setHeader("X-Weekly-Remaining", String(result.snapshot.weekly.remaining));
+  }
 
   if (!result.allowed) {
     if (result.retryAfterMs > 0) {
@@ -43,7 +56,8 @@ export const accountRateLimitMiddleware: RequestHandler = (req, res, next) => {
       retryAfterMs: result.retryAfterMs,
       requestCost: result.quotaCost,
       quota: result.snapshot.quota,
-      burst: result.snapshot.burst
+      burst: result.snapshot.burst,
+      weekly: result.snapshot.weekly
     });
   }
 

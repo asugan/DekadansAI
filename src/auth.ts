@@ -21,12 +21,10 @@ export const auth = betterAuth({
       createCustomerOnSignUp: true,
       use: [
         checkout({
-          products: [
-            {
-              productId: config.polarWeeklyProductId,
-              slug: "weekly"
-            }
-          ],
+          products: config.planTiers.map((tier) => ({
+            productId: tier.productId,
+            slug: tier.slug
+          })),
           successUrl: config.polarCheckoutSuccessUrl,
           returnUrl: config.polarPortalReturnUrl,
           authenticatedUsersOnly: true

@@ -1,9 +1,11 @@
-import { config } from "../config";
+import { type PlanTierConfig, config } from "../config";
 
 type JsonObject = Record<string, unknown>;
 
 export interface WeeklyPlanStatus {
   active: boolean;
+  tierSlug: string | null;
+  tier: PlanTierConfig | null;
   customerExists: boolean;
 }
 
@@ -36,13 +38,28 @@ export function getActiveSubscriptions(customerState: unknown): JsonObject[] {
 }
 
 export function getWeeklyPlanStatus(customerState: unknown): WeeklyPlanStatus {
-  const active = getActiveSubscriptions(customerState).some((subscription) => {
-    const productId = subscription.product_id || subscription.productId;
-    return productId === config.polarWeeklyProductId;
-  });
+  const activeSubs = getActiveSubscriptions(customerState);
+
+  for (const tier of config.planTiers) {
+    const hasTier = activeSubs.some((subscription) => {
+      const productId = subscription.product_id || subscription.productId;
+      return productId === tier.productId;
+    });
+
+    if (hasTier) {
+      return {
+        active: true,
+        tierSlug: tier.slug,
+        tier,
+        customerExists: true
+      };
+    }
+  }
 
   return {
-    active,
+    active: false,
+    tierSlug: null,
+    tier: null,
     customerExists: true
   };
 }

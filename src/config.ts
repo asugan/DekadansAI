@@ -63,6 +63,14 @@ function toModelRequestCosts(
   }, {});
 }
 
+export interface PlanTierConfig {
+  productId: string;
+  slug: string;
+  label: string;
+  quotaMax: number;
+  weeklyQuotaMax: number;
+}
+
 export interface AppConfig {
   port: number;
   trustProxy: boolean;
@@ -77,7 +85,8 @@ export interface AppConfig {
   betterAuthDatabasePath: string;
   apiKeyPrefix: string;
   accountQuotaWindowMs: number;
-  accountQuotaMax: number;
+  weeklyQuotaWindowMs: number;
+  planTiers: PlanTierConfig[];
   defaultModelRequestCost: number;
   modelRequestCosts: Record<string, number>;
   accountBurstWindowMs: number;
@@ -85,11 +94,29 @@ export interface AppConfig {
   polarAccessToken: string;
   polarWebhookSecret: string;
   polarEnvironment: "sandbox" | "production";
-  polarWeeklyProductId: string;
   polarCheckoutSuccessUrl: string;
   polarPortalReturnUrl: string;
   defaultModel: string;
   defaultReasoningEffort: string;
+}
+
+function toPlanTiers(value: string | undefined): PlanTierConfig[] {
+  const raw = value || "";
+  if (!raw) return [];
+
+  return raw.split(";").reduce<PlanTierConfig[]>((tiers, entry) => {
+    const parts = entry.split(",");
+    if (parts.length < 4) return tiers;
+    const productId = parts[0]?.trim();
+    const slug = parts[1]?.trim();
+    const quotaMax = Number.parseInt(parts[2]?.trim(), 10);
+    const weeklyQuotaMax = Number.parseInt(parts[3]?.trim(), 10);
+    const label = parts[4]?.trim() || slug;
+    if (productId && slug && quotaMax > 0 && weeklyQuotaMax > 0) {
+      tiers.push({ productId, slug, label, quotaMax, weeklyQuotaMax });
+    }
+    return tiers;
+  }, []);
 }
 
 export const config: AppConfig = {
@@ -109,7 +136,11 @@ export const config: AppConfig = {
   betterAuthDatabasePath: process.env.BETTER_AUTH_DATABASE_PATH || "./data/better-auth.db",
   apiKeyPrefix: process.env.API_KEY_PREFIX || "cpa_",
   accountQuotaWindowMs: toInt(process.env.ACCOUNT_QUOTA_WINDOW_MS, 18000000),
-  accountQuotaMax: toInt(process.env.ACCOUNT_QUOTA_MAX, 500),
+  weeklyQuotaWindowMs: toInt(process.env.WEEKLY_QUOTA_WINDOW_MS, 604800000),
+  planTiers: toPlanTiers(
+    process.env.POLAR_PLAN_TIERS ||
+      ""
+  ),
   defaultModelRequestCost: toPositiveInt(process.env.DEFAULT_MODEL_REQUEST_COST, 1),
   modelRequestCosts: toModelRequestCosts(process.env.MODEL_REQUEST_COSTS, {
     "gpt-5.5": 3,
@@ -120,7 +151,6 @@ export const config: AppConfig = {
   polarAccessToken: process.env.POLAR_ACCESS_TOKEN || "",
   polarWebhookSecret: process.env.POLAR_WEBHOOK_SECRET || "",
   polarEnvironment: process.env.POLAR_ENVIRONMENT === "production" ? "production" : "sandbox",
-  polarWeeklyProductId: process.env.POLAR_WEEKLY_PRODUCT_ID || "",
   polarCheckoutSuccessUrl:
     process.env.POLAR_CHECKOUT_SUCCESS_URL ||
     `${(process.env.FRONTEND_APP_URL || "http://localhost:3000").replace(/\/$/, "")}/dashboard?checkout=success`,
@@ -138,7 +168,7 @@ export function assertRequiredConfig(): void {
   if (!config.betterAuthSecret) missing.push("BETTER_AUTH_SECRET");
   if (!config.polarAccessToken) missing.push("POLAR_ACCESS_TOKEN");
   if (!config.polarWebhookSecret) missing.push("POLAR_WEBHOOK_SECRET");
-  if (!config.polarWeeklyProductId) missing.push("POLAR_WEEKLY_PRODUCT_ID");
+  if (config.planTiers.length === 0) missing.push("POLAR_PLAN_TIERS");
   if (config.betterAuthSecret.length < 32) {
     throw new Error("BETTER_AUTH_SECRET must be at least 32 characters");
   }
