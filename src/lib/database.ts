@@ -9,3 +9,6 @@ const databasePath = path.resolve(process.cwd(), config.betterAuthDatabasePath);
 fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 
 export const database = new Database(databasePath);
+
+database.pragma("journal_mode = WAL");
+database.pragma("busy_timeout = 5000");

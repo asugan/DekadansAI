@@ -5,6 +5,7 @@ import { apiKey } from "better-auth/plugins";
 import { config } from "./config";
 import { database } from "./lib/database";
 import { polarClient } from "./lib/polar";
+import { processSubscriptionWebhook } from "./lib/subscription-entitlements";
 
 export const auth = betterAuth({
   database,
@@ -33,7 +34,14 @@ export const auth = betterAuth({
           returnUrl: config.polarPortalReturnUrl
         }),
         webhooks({
-          secret: config.polarWebhookSecret
+          secret: config.polarWebhookSecret,
+          onSubscriptionCreated: processSubscriptionWebhook,
+          onSubscriptionUpdated: processSubscriptionWebhook,
+          onSubscriptionActive: processSubscriptionWebhook,
+          onSubscriptionCanceled: processSubscriptionWebhook,
+          onSubscriptionRevoked: (payload) => processSubscriptionWebhook(payload, "revoked"),
+          onSubscriptionUncanceled: processSubscriptionWebhook,
+          onCustomerStateChanged: processSubscriptionWebhook
         })
       ]
     }),

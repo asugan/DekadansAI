@@ -119,6 +119,24 @@ function toPlanTiers(value: string | undefined): PlanTierConfig[] {
   }, []);
 }
 
+function isUnsafeProductionUrl(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+
+  return (
+    normalized.includes("localhost") ||
+    normalized.includes("127.0.0.1") ||
+    normalized.includes("0.0.0.0") ||
+    normalized.includes("ngrok") ||
+    normalized.includes("lvh.me")
+  );
+}
+
+function assertSafeProductionUrl(name: string, value: string): void {
+  if (!value || isUnsafeProductionUrl(value)) {
+    throw new Error(`${name} must be a production URL when NODE_ENV=production`);
+  }
+}
+
 export const config: AppConfig = {
   port: toInt(process.env.PORT, 3000),
   trustProxy: toBoolean(process.env.TRUST_PROXY, false),
@@ -171,6 +189,21 @@ export function assertRequiredConfig(): void {
   if (config.planTiers.length === 0) missing.push("POLAR_PLAN_TIERS");
   if (config.betterAuthSecret.length < 32) {
     throw new Error("BETTER_AUTH_SECRET must be at least 32 characters");
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    if (config.corsOrigin === "*") {
+      throw new Error("CORS_ORIGIN must be an explicit allowlist when NODE_ENV=production");
+    }
+
+    for (const origin of config.corsOrigin.split(",").map((item) => item.trim()).filter(Boolean)) {
+      assertSafeProductionUrl("CORS_ORIGIN", origin);
+    }
+
+    assertSafeProductionUrl("FRONTEND_APP_URL", config.frontendAppUrl);
+    assertSafeProductionUrl("BETTER_AUTH_URL", config.betterAuthUrl);
+    assertSafeProductionUrl("POLAR_CHECKOUT_SUCCESS_URL", config.polarCheckoutSuccessUrl);
+    assertSafeProductionUrl("POLAR_PORTAL_RETURN_URL", config.polarPortalReturnUrl);
   }
 
   if (missing.length > 0) {

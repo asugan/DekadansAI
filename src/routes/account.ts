@@ -6,8 +6,7 @@ import { config } from "../config";
 import { getAccountRateLimitSnapshot } from "../lib/account-rate-limit";
 import { asyncHandler } from "../lib/async-handler";
 import { fetchModelCatalog } from "../lib/model-catalog";
-import { polarClient } from "../lib/polar";
-import { getWeeklyPlanStatus, isPolarNotFound } from "../lib/polar-state";
+import { resolveWeeklyPlanStatus } from "../lib/subscription-entitlements";
 
 const router = express.Router();
 
@@ -81,55 +80,30 @@ router.get(
       return res.status(401).json({ error: "unauthorized" });
     }
 
-    try {
-      const customerState = await polarClient.customers.getStateExternal({
-        externalId: session.user.id
-      });
-      const weeklyPlan = getWeeklyPlanStatus(customerState);
+    const weeklyPlan = await resolveWeeklyPlanStatus(session.user.id);
 
-      return res.json({
-        generatedAt: new Date().toISOString(),
-        weeklyPlan: {
-          active: weeklyPlan.active,
-          tierSlug: weeklyPlan.tierSlug,
-          tier: weeklyPlan.tier
-            ? {
-                slug: weeklyPlan.tier.slug,
-                label: weeklyPlan.tier.label,
-                quotaMax: weeklyPlan.tier.quotaMax,
-                weeklyQuotaMax: weeklyPlan.tier.weeklyQuotaMax
-              }
-            : null,
-          customerExists: weeklyPlan.customerExists
-        },
-        planTiers: config.planTiers.map((t) => ({
-          slug: t.slug,
-          label: t.label,
-          quotaMax: t.quotaMax,
-          weeklyQuotaMax: t.weeklyQuotaMax
-        }))
-      });
-    } catch (error) {
-      if (isPolarNotFound(error)) {
-        return res.json({
-          generatedAt: new Date().toISOString(),
-          weeklyPlan: {
-            active: false,
-            tierSlug: null,
-            tier: null,
-            customerExists: false
-          },
-          planTiers: config.planTiers.map((t) => ({
-            slug: t.slug,
-            label: t.label,
-            quotaMax: t.quotaMax,
-            weeklyQuotaMax: t.weeklyQuotaMax
-          }))
-        });
-      }
-
-      throw error;
-    }
+    return res.json({
+      generatedAt: new Date().toISOString(),
+      weeklyPlan: {
+        active: weeklyPlan.active,
+        tierSlug: weeklyPlan.tierSlug,
+        tier: weeklyPlan.tier
+          ? {
+              slug: weeklyPlan.tier.slug,
+              label: weeklyPlan.tier.label,
+              quotaMax: weeklyPlan.tier.quotaMax,
+              weeklyQuotaMax: weeklyPlan.tier.weeklyQuotaMax
+            }
+          : null,
+        customerExists: weeklyPlan.customerExists
+      },
+      planTiers: config.planTiers.map((t) => ({
+        slug: t.slug,
+        label: t.label,
+        quotaMax: t.quotaMax,
+        weeklyQuotaMax: t.weeklyQuotaMax
+      }))
+    });
   })
 );
 
@@ -143,19 +117,8 @@ router.get(
       return res.status(401).json({ error: "unauthorized" });
     }
 
-    // Determine plan tier for this user
-    let planTier = config.planTiers[0];
-    try {
-      const customerState = await polarClient.customers.getStateExternal({
-        externalId: session.user.id
-      });
-      const planStatus = getWeeklyPlanStatus(customerState);
-      if (planStatus.tier) {
-        planTier = planStatus.tier;
-      }
-    } catch {
-      // fallback to first tier
-    }
+    const planStatus = await resolveWeeklyPlanStatus(session.user.id);
+    const planTier = planStatus.tier || config.planTiers[0];
 
     const apiKeys = await auth.api.listApiKeys({ headers });
     const now = Date.now();

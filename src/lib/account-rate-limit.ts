@@ -159,26 +159,34 @@ function buildSnapshot(row: RateLimitRow, planTier: PlanTierConfig): AccountRate
   };
 }
 
+const getAccountRateLimitSnapshotTx = database.transaction((
+  userId: string,
+  planTier: PlanTierConfig,
+  now: number
+): AccountRateLimitSnapshot => {
+  const row = normalizeRow(userId, now, planTier, getRow.get(userId) as RateLimitRow | undefined);
+  upsertRow.run(row);
+  return buildSnapshot(row, planTier);
+});
+
 export function getAccountRateLimitSnapshot(
   userId: string,
   planTier: PlanTierConfig,
   now = Date.now()
 ): AccountRateLimitSnapshot {
-  const row = normalizeRow(userId, now, planTier, getRow.get(userId) as RateLimitRow | undefined);
-  upsertRow.run(row);
-  return buildSnapshot(row, planTier);
+  return getAccountRateLimitSnapshotTx(userId, planTier, now);
 }
 
 export function getModelRequestCost(model: string): number {
   return config.modelRequestCosts[model] || config.defaultModelRequestCost;
 }
 
-export function consumeAccountRateLimit(
+const consumeAccountRateLimitTx = database.transaction((
   userId: string,
   planTier: PlanTierConfig,
   quotaCost: number | undefined,
-  now = Date.now()
-): AccountRateLimitResult {
+  now: number
+): AccountRateLimitResult => {
   const safeQuotaCost = Math.max(1, Math.floor(quotaCost ?? config.defaultModelRequestCost));
   const row = normalizeRow(userId, now, planTier, getRow.get(userId) as RateLimitRow | undefined);
 
@@ -233,4 +241,13 @@ export function consumeAccountRateLimit(
     retryAfterMs: 0,
     snapshot: buildSnapshot(updatedRow, planTier)
   };
+});
+
+export function consumeAccountRateLimit(
+  userId: string,
+  planTier: PlanTierConfig,
+  quotaCost: number | undefined,
+  now = Date.now()
+): AccountRateLimitResult {
+  return consumeAccountRateLimitTx(userId, planTier, quotaCost, now);
 }

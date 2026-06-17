@@ -1,15 +1,6 @@
 import { type RequestHandler } from "express";
 
-import { polarClient } from "../lib/polar";
-import { getWeeklyPlanStatus, isPolarNotFound } from "../lib/polar-state";
-
-declare global {
-  namespace Express {
-    interface Locals {
-      planTier?: import("../config").PlanTierConfig;
-    }
-  }
-}
+import { resolveWeeklyPlanStatus } from "../lib/subscription-entitlements";
 
 export const weeklyPlanMiddleware: RequestHandler = (_req, res, next) => {
   const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
@@ -20,11 +11,7 @@ export const weeklyPlanMiddleware: RequestHandler = (_req, res, next) => {
 
   void (async () => {
     try {
-      const customerState = await polarClient.customers.getStateExternal({
-        externalId: userId
-      });
-
-      const planStatus = getWeeklyPlanStatus(customerState);
+      const planStatus = await resolveWeeklyPlanStatus(userId);
 
       if (!planStatus.active || !planStatus.tier) {
         return res.status(402).json({ error: "weekly_plan_required" });
@@ -34,10 +21,6 @@ export const weeklyPlanMiddleware: RequestHandler = (_req, res, next) => {
 
       return next();
     } catch (error) {
-      if (isPolarNotFound(error)) {
-        return res.status(402).json({ error: "weekly_plan_required" });
-      }
-
       return next(error);
     }
   })();
