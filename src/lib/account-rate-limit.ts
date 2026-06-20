@@ -251,3 +251,32 @@ export function consumeAccountRateLimit(
 ): AccountRateLimitResult {
   return consumeAccountRateLimitTx(userId, planTier, quotaCost, now);
 }
+
+const refundAccountRateLimitTx = database.transaction((
+  userId: string,
+  planTier: PlanTierConfig,
+  quotaCost: number | undefined,
+  now: number
+): AccountRateLimitSnapshot => {
+  const safeQuotaCost = Math.max(1, Math.floor(quotaCost ?? config.defaultModelRequestCost));
+  const row = normalizeRow(userId, now, planTier, getRow.get(userId) as RateLimitRow | undefined);
+  const updatedRow: RateLimitRow = {
+    ...row,
+    quotaRequestCount: Math.max(0, row.quotaRequestCount - safeQuotaCost),
+    burstRequestCount: Math.max(0, row.burstRequestCount - 1),
+    weeklyRequestCount: Math.max(0, (row.weeklyRequestCount || 0) - safeQuotaCost),
+    updatedAt: now
+  };
+
+  upsertRow.run(updatedRow);
+  return buildSnapshot(updatedRow, planTier);
+});
+
+export function refundAccountRateLimit(
+  userId: string,
+  planTier: PlanTierConfig,
+  quotaCost: number | undefined,
+  now = Date.now()
+): AccountRateLimitSnapshot {
+  return refundAccountRateLimitTx(userId, planTier, quotaCost, now);
+}

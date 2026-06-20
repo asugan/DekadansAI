@@ -390,14 +390,12 @@ export function getLocalWeeklyPlanStatus(
 export async function resolveWeeklyPlanStatus(userId: string): Promise<SubscriptionEntitlement> {
   const localStatus = getLocalWeeklyPlanStatus(userId);
   const customerRow = getSubscriptionCustomerByUser.get(userId) as SubscriptionCustomerRow | undefined;
-  const hasLocalSubscriptionRows =
-    ((getSubscriptionsByUser.all(userId) as SubscriptionRow[]) || []).length > 0;
 
-  if (
-    localStatus.active ||
-    hasLocalSubscriptionRows ||
-    (customerRow && Date.now() - customerRow.syncedAt < inactiveStateTtlMs)
-  ) {
+  if (localStatus.active) {
+    return localStatus;
+  }
+
+  if (customerRow && Date.now() - customerRow.syncedAt < inactiveStateTtlMs) {
     return localStatus;
   }
 
@@ -470,12 +468,10 @@ function applySubscriptionPayload(data: unknown, statusOverride?: string): void 
     return;
   }
 
-  const row = toSubscriptionRow(
-    userId,
-    extractCustomerIdFromSubscription(data),
-    data,
-    statusOverride
-  );
+  const polarCustomerId = extractCustomerIdFromSubscription(data);
+  const row = toSubscriptionRow(userId, polarCustomerId, data, statusOverride);
+
+  markCustomerState(userId, true, polarCustomerId);
 
   if (row) {
     upsertSubscription.run(row);

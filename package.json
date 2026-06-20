@@ -6,8 +6,9 @@
   "scripts": {
     "auth:generate": "better-auth generate --config src/auth.ts --yes",
     "auth:migrate": "better-auth migrate --config src/auth.ts --yes",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch src/server.ts",
+    "test": "tsx --test src/tests/*.test.ts",
     "subscriptions:reconcile": "tsx src/scripts/reconcile-subscriptions.ts",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
