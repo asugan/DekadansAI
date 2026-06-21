@@ -7,6 +7,7 @@ import { getAccountRateLimitSnapshot } from "../lib/account-rate-limit";
 import { asyncHandler } from "../lib/async-handler";
 import { fetchModelCatalog } from "../lib/model-catalog";
 import { resolveWeeklyPlanStatus } from "../lib/subscription-entitlements";
+import { getUsageSnapshot, type UsageKeyInfo } from "../lib/usage-stats";
 
 const router = express.Router();
 
@@ -195,6 +196,42 @@ router.get(
       generatedAt: new Date().toISOString(),
       data: catalog.models
     });
+  })
+);
+
+router.get(
+  "/usage",
+  asyncHandler(async (req, res) => {
+    const headers = fromNodeHeaders(req.headers);
+    const session = await auth.api.getSession({ headers });
+
+    if (!session?.user) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+
+    const apiKeys = await auth.api.listApiKeys({ headers });
+    const normalizedKeys: UsageKeyInfo[] = [];
+
+    for (const key of apiKeys) {
+      const keyAsObject = asObject(key);
+      const id = String(keyAsObject.id || "");
+      if (!id) continue;
+
+      normalizedKeys.push({
+        id,
+        name: typeof keyAsObject.name === "string" ? keyAsObject.name : null,
+        start: typeof keyAsObject.start === "string" ? keyAsObject.start : null,
+        enabled: toBoolean(keyAsObject.enabled, true)
+      });
+    }
+
+    normalizedKeys.sort((a, b) => {
+      const aName = a.name || a.start || "";
+      const bName = b.name || b.start || "";
+      return aName.localeCompare(bName);
+    });
+
+    return res.json(getUsageSnapshot(session.user.id, normalizedKeys));
   })
 );
 

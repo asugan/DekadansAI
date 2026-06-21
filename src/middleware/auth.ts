@@ -36,6 +36,7 @@ export const authMiddleware: RequestHandler = (req, res, next) => {
       }
 
       res.locals.userId = session.user.id;
+      res.locals.apiKeyId = session.session.id;
       return next();
     } catch (error) {
       const errorAsObject = error as {

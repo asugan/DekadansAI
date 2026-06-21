@@ -7,6 +7,7 @@ import {
   refundAccountRateLimit
 } from "../lib/account-rate-limit";
 import { asyncHandler } from "../lib/async-handler";
+import { extractTokenUsage, recordUsageEvent } from "../lib/usage-stats";
 import {
   decodeResponse,
   pipeUpstreamResponse,
@@ -133,7 +134,7 @@ async function proxyJsonRequest(
   res: Response,
   pathname: string,
   payload: unknown = req.body,
-  quotaInfo?: { userId: string; planTier: PlanTierConfig; quotaCost: number }
+  quotaInfo?: { userId: string; planTier: PlanTierConfig; quotaCost: number; modelId: string }
 ): Promise<void> {
   let upstreamResponse: globalThis.Response;
 
@@ -181,6 +182,20 @@ async function proxyJsonRequest(
   }
 
   const responsePayload = await decodeResponse(upstreamResponse);
+  if (quotaInfo && upstreamResponse.status < 500) {
+    const usage = extractTokenUsage(responsePayload);
+    const apiKeyId = typeof res.locals.apiKeyId === "string" ? res.locals.apiKeyId : null;
+
+    recordUsageEvent({
+      userId: quotaInfo.userId,
+      apiKeyId,
+      model: quotaInfo.modelId || null,
+      endpoint: pathname,
+      statusCode: upstreamResponse.status,
+      requestCost: quotaInfo.quotaCost,
+      ...usage
+    });
+  }
   res.status(upstreamResponse.status).json(responsePayload || {});
 }
 
@@ -199,13 +214,15 @@ router.post(
     if (!requireModel(req, res)) return;
     const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
     const planTier = getPlanTierOrDefault(res.locals.planTier);
-    const quotaInfo = reserveInferenceQuota(res, resolveChargeModel(req.path, req.body));
+    const modelId = resolveChargeModel(req.path, req.body);
+    const quotaInfo = reserveInferenceQuota(res, modelId);
     if (!quotaInfo) return;
 
     await proxyJsonRequest(req, res, "/v1/chat/completions", req.body, {
       userId,
       planTier,
-      quotaCost: quotaInfo.quotaCost
+      quotaCost: quotaInfo.quotaCost,
+      modelId
     });
   })
 );
@@ -216,13 +233,15 @@ router.post(
     if (!requireModel(req, res)) return;
     const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
     const planTier = getPlanTierOrDefault(res.locals.planTier);
-    const quotaInfo = reserveInferenceQuota(res, resolveChargeModel(req.path, req.body));
+    const modelId = resolveChargeModel(req.path, req.body);
+    const quotaInfo = reserveInferenceQuota(res, modelId);
     if (!quotaInfo) return;
 
     await proxyJsonRequest(req, res, "/v1/responses", req.body, {
       userId,
       planTier,
-      quotaCost: quotaInfo.quotaCost
+      quotaCost: quotaInfo.quotaCost,
+      modelId
     });
   })
 );
@@ -233,13 +252,15 @@ router.post(
     const payload = defaultChatPayload(req.body);
     const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
     const planTier = getPlanTierOrDefault(res.locals.planTier);
-    const quotaInfo = reserveInferenceQuota(res, resolveChargeModel(req.path, payload));
+    const modelId = resolveChargeModel(req.path, payload);
+    const quotaInfo = reserveInferenceQuota(res, modelId);
     if (!quotaInfo) return;
 
     await proxyJsonRequest(req, res, "/v1/chat/completions", payload, {
       userId,
       planTier,
-      quotaCost: quotaInfo.quotaCost
+      quotaCost: quotaInfo.quotaCost,
+      modelId
     });
   })
 );
@@ -250,13 +271,15 @@ router.post(
     const payload = defaultResponsesPayload(req.body);
     const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
     const planTier = getPlanTierOrDefault(res.locals.planTier);
-    const quotaInfo = reserveInferenceQuota(res, resolveChargeModel(req.path, payload));
+    const modelId = resolveChargeModel(req.path, payload);
+    const quotaInfo = reserveInferenceQuota(res, modelId);
     if (!quotaInfo) return;
 
     await proxyJsonRequest(req, res, "/v1/responses", payload, {
       userId,
       planTier,
-      quotaCost: quotaInfo.quotaCost
+      quotaCost: quotaInfo.quotaCost,
+      modelId
     });
   })
 );
