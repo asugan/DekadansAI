@@ -7,6 +7,7 @@ import {
   refundAccountRateLimit
 } from "../lib/account-rate-limit";
 import { asyncHandler } from "../lib/async-handler";
+import { sanitizePublicModelPayload } from "../lib/model-catalog";
 import { extractTokenUsage, recordUsageEvent } from "../lib/usage-stats";
 import {
   decodeResponse,
@@ -204,7 +205,7 @@ router.get(
   asyncHandler(async (_req, res) => {
     const upstreamResponse = await requestInference({ method: "GET", pathname: "/v1/models" });
     const payload = await decodeResponse(upstreamResponse);
-    res.status(upstreamResponse.status).json(payload || {});
+    res.status(upstreamResponse.status).json(sanitizePublicModelPayload(payload || {}));
   })
 );
 

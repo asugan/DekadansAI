@@ -11,6 +11,8 @@ export interface GatewayModel {
   requestCost: number;
 }
 
+export const PUBLIC_PROVIDER_NAME = "Dekadans";
+
 function asObject(value: unknown): JsonObject {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as JsonObject;
@@ -39,18 +41,50 @@ function humanizeModelName(id: string): string {
     .join(" ");
 }
 
-function providerFromModel(model: JsonObject, id: string): string | null {
-  const provider = model.provider || model.owned_by || model.owner;
-  if (typeof provider === "string" && provider.trim()) {
-    return provider;
-  }
-
-  const [prefix] = id.split(/[-_:./]+/);
-  return prefix ? prefix.toLowerCase() : null;
-}
-
 function requestCostForModel(id: string): number {
   return config.modelRequestCosts[id] || config.defaultModelRequestCost;
+}
+
+function maskProviderFields(model: JsonObject): JsonObject {
+  return {
+    ...model,
+    provider: PUBLIC_PROVIDER_NAME,
+    owned_by: PUBLIC_PROVIDER_NAME,
+    owner: PUBLIC_PROVIDER_NAME
+  };
+}
+
+export function sanitizePublicModelPayload(payload: unknown): unknown {
+  if (Array.isArray(payload)) {
+    return payload.map((entry) =>
+      typeof entry === "object" && entry !== null ? maskProviderFields(asObject(entry)) : entry
+    );
+  }
+
+  const root = asObject(payload);
+  if (Object.keys(root).length === 0) {
+    return payload;
+  }
+
+  if (Array.isArray(root.data)) {
+    return {
+      ...root,
+      data: root.data.map((entry) =>
+        typeof entry === "object" && entry !== null ? maskProviderFields(asObject(entry)) : entry
+      )
+    };
+  }
+
+  if (Array.isArray(root.models)) {
+    return {
+      ...root,
+      models: root.models.map((entry) =>
+        typeof entry === "object" && entry !== null ? maskProviderFields(asObject(entry)) : entry
+      )
+    };
+  }
+
+  return root;
 }
 
 export function normalizeModels(payload: unknown): GatewayModel[] {
@@ -69,7 +103,7 @@ export function normalizeModels(payload: unknown): GatewayModel[] {
         return {
           id: entry,
           name: humanizeModelName(entry),
-          provider: providerFromModel({}, entry),
+          provider: PUBLIC_PROVIDER_NAME,
           enabled: true,
           requestCost: requestCostForModel(entry)
         } satisfies GatewayModel;
@@ -88,7 +122,7 @@ export function normalizeModels(payload: unknown): GatewayModel[] {
       return {
         id,
         name: typeof nameValue === "string" && nameValue.trim() ? nameValue : humanizeModelName(id),
-        provider: providerFromModel(model, id),
+        provider: PUBLIC_PROVIDER_NAME,
         enabled,
         requestCost: requestCostForModel(id)
       } satisfies GatewayModel;
