@@ -83,6 +83,10 @@ export interface AppConfig {
   betterAuthUrl: string;
   betterAuthTrustedOrigins: string[];
   betterAuthDatabasePath: string;
+  googleClientId: string;
+  googleClientSecret: string;
+  githubClientId: string;
+  githubClientSecret: string;
   apiKeyPrefix: string;
   accountQuotaWindowMs: number;
   weeklyQuotaWindowMs: number;
@@ -152,6 +156,10 @@ export const config: AppConfig = {
     "http://127.0.0.1:3000"
   ]),
   betterAuthDatabasePath: process.env.BETTER_AUTH_DATABASE_PATH || "./data/better-auth.db",
+  googleClientId: process.env.GOOGLE_CLIENT_ID || "",
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+  githubClientId: process.env.GITHUB_CLIENT_ID || "",
+  githubClientSecret: process.env.GITHUB_CLIENT_SECRET || "",
   apiKeyPrefix: process.env.API_KEY_PREFIX || "cpa_",
   accountQuotaWindowMs: toInt(process.env.ACCOUNT_QUOTA_WINDOW_MS, 18000000),
   weeklyQuotaWindowMs: toInt(process.env.WEEKLY_QUOTA_WINDOW_MS, 604800000),
@@ -184,6 +192,10 @@ export function assertRequiredConfig(): void {
 
   if (!config.cliProxyApiKey) missing.push("CLI_PROXY_API_KEY");
   if (!config.betterAuthSecret) missing.push("BETTER_AUTH_SECRET");
+  if (!config.googleClientId) missing.push("GOOGLE_CLIENT_ID");
+  if (!config.googleClientSecret) missing.push("GOOGLE_CLIENT_SECRET");
+  if (!config.githubClientId) missing.push("GITHUB_CLIENT_ID");
+  if (!config.githubClientSecret) missing.push("GITHUB_CLIENT_SECRET");
   if (!config.polarAccessToken) missing.push("POLAR_ACCESS_TOKEN");
   if (!config.polarWebhookSecret) missing.push("POLAR_WEBHOOK_SECRET");
   if (config.planTiers.length === 0) missing.push("POLAR_PLAN_TIERS");

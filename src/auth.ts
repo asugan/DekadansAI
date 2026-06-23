@@ -13,8 +13,17 @@ export const auth = betterAuth({
   baseURL: config.betterAuthUrl,
   trustedOrigins: config.betterAuthTrustedOrigins,
   emailAndPassword: {
-    enabled: true,
-    autoSignIn: true
+    enabled: false
+  },
+  socialProviders: {
+    google: {
+      clientId: config.googleClientId,
+      clientSecret: config.googleClientSecret
+    },
+    github: {
+      clientId: config.githubClientId,
+      clientSecret: config.githubClientSecret
+    }
   },
   plugins: [
     polar({
