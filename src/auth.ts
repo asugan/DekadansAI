@@ -5,7 +5,11 @@ import { apiKey } from "better-auth/plugins";
 import { config } from "./config";
 import { database } from "./lib/database";
 import { polarClient } from "./lib/polar";
-import { processSubscriptionWebhook } from "./lib/subscription-entitlements";
+
+async function processSubscriptionWebhook(payload: unknown, statusOverride?: string): Promise<void> {
+  const { processSubscriptionWebhook: processWebhook } = await import("./lib/subscription-entitlements.js");
+  await processWebhook(payload, statusOverride);
+}
 
 export const auth = betterAuth({
   database,

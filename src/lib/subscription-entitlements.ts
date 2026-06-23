@@ -91,7 +91,11 @@ const getSubscriptionCustomerByUser = database
   .prepare("select * from subscription_customers where userId = ?")
   .pluck(false);
 
-const listUserIds = database.prepare("select id from user").pluck();
+function getUserIds(): string[] {
+  return (database.prepare("select id from user").pluck().all() as string[]).filter(
+    (userId) => userId.trim().length > 0
+  );
+}
 
 const upsertSubscriptionCustomer = database.prepare(`
   insert into subscription_customers (
@@ -431,7 +435,7 @@ export async function reconcileSubscriptionEntitlements(): Promise<{
   missing: number;
   failed: number;
 }> {
-  const userIds = (listUserIds.all() as string[]).filter((userId) => userId.trim().length > 0);
+  const userIds = getUserIds();
   const result = {
     checked: 0,
     synced: 0,
