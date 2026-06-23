@@ -33,3 +33,9 @@ void test("non-default AI routes charge the requested model", async () => {
 
   assert.equal(resolveChargeModel("/chat/completions", { model: "kimi-k2.6" }), "kimi-k2.6");
 });
+
+void test("anthropic messages route charges the requested model", async () => {
+  const { resolveChargeModel } = await loadAiRoutes();
+
+  assert.equal(resolveChargeModel("/messages", { model: "claude-sonnet-4" }), "claude-sonnet-4");
+});

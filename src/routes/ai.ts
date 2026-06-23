@@ -1,3 +1,7 @@
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { type ReadableStream } from "node:stream/web";
+
 import express, { type Request, type Response } from "express";
 
 import { config, type PlanTierConfig } from "../config";
@@ -9,15 +13,26 @@ import {
 import { asyncHandler } from "../lib/async-handler";
 import { sanitizePublicModelPayload } from "../lib/model-catalog";
 import { extractTokenUsage, recordUsageEvent } from "../lib/usage-stats";
-import {
-  decodeResponse,
-  pipeUpstreamResponse,
-  requestInference
-} from "../services/cliproxy-client";
+import { decodeResponse, requestInference } from "../services/cliproxy-client";
 
 const router = express.Router();
 
 type JsonObject = Record<string, unknown>;
+type UsageEventType = "inference" | "token_count";
+
+interface UsageRecordInfo {
+  userId: string;
+  apiKeyId: string | null;
+  modelId: string;
+  requestCost: number;
+  eventType: UsageEventType;
+  billable: boolean;
+}
+
+interface ProxyJsonOptions {
+  quotaInfo?: { userId: string; planTier: PlanTierConfig; quotaCost: number; modelId: string };
+  usageInfo?: UsageRecordInfo;
+}
 
 function asObject(value: unknown): JsonObject {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -130,13 +145,142 @@ function requireModel(req: Request, res: Response): boolean {
   return false;
 }
 
+function getUserIdOrReject(res: Response): string | null {
+  const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
+
+  if (!userId) {
+    res.status(401).json({ error: "unauthorized" });
+    return null;
+  }
+
+  return userId;
+}
+
+function buildInferenceUsageInfo(res: Response, quotaInfo: {
+  userId: string;
+  quotaCost: number;
+  modelId: string;
+}): UsageRecordInfo {
+  return {
+    userId: quotaInfo.userId,
+    apiKeyId: typeof res.locals.apiKeyId === "string" ? res.locals.apiKeyId : null,
+    modelId: quotaInfo.modelId,
+    requestCost: quotaInfo.quotaCost,
+    eventType: "inference",
+    billable: true
+  };
+}
+
+function extractStreamingUsageFromPayload(payload: unknown): ReturnType<typeof extractTokenUsage> {
+  const root = asObject(payload);
+  const message = asObject(root.message);
+  const usageSource = Object.keys(asObject(root.usage)).length > 0 ? root : message;
+
+  return extractTokenUsage(usageSource);
+}
+
+function mergeUsage(
+  current: ReturnType<typeof extractTokenUsage>,
+  next: ReturnType<typeof extractTokenUsage>
+): ReturnType<typeof extractTokenUsage> {
+  const inputTokens = Math.max(current.inputTokens, next.inputTokens);
+  const outputTokens = Math.max(current.outputTokens, next.outputTokens);
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: Math.max(current.totalTokens, next.totalTokens, inputTokens + outputTokens)
+  };
+}
+
+function createUsageTap(onUsage: (usage: ReturnType<typeof extractTokenUsage>) => void): Transform {
+  let buffer = "";
+  let streamingUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+
+  function parseLine(line: string): void {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) return;
+
+    const rawData = trimmed.slice(5).trim();
+    if (!rawData || rawData === "[DONE]") return;
+
+    try {
+      streamingUsage = mergeUsage(streamingUsage, extractStreamingUsageFromPayload(JSON.parse(rawData)));
+      onUsage(streamingUsage);
+    } catch {
+      // Ignore non-JSON SSE frames while preserving the response stream.
+    }
+  }
+
+  return new Transform({
+    transform(chunk, _encoding, callback) {
+      buffer += chunk.toString("utf8");
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        parseLine(line);
+      }
+
+      callback(null, chunk);
+    },
+    flush(callback) {
+      if (buffer) {
+        parseLine(buffer);
+      }
+      callback();
+    }
+  });
+}
+
+async function pipeStreamingResponseWithUsage(
+  upstreamResponse: globalThis.Response,
+  res: Response,
+  usageInfo: UsageRecordInfo | undefined,
+  endpoint: string
+): Promise<void> {
+  const contentType = upstreamResponse.headers.get("content-type");
+  const cacheControl = upstreamResponse.headers.get("cache-control");
+  let streamingUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+
+  res.status(upstreamResponse.status);
+  if (contentType) res.setHeader("content-type", contentType);
+  if (cacheControl) res.setHeader("cache-control", cacheControl);
+
+  if (!upstreamResponse.body) {
+    res.end();
+  } else {
+    const body = Readable.fromWeb(upstreamResponse.body as unknown as ReadableStream<Uint8Array>);
+    const tap = createUsageTap((usage) => {
+      streamingUsage = usage;
+    });
+
+    await pipeline(body, tap, res);
+  }
+
+  if (usageInfo && upstreamResponse.status < 500) {
+    recordUsageEvent({
+      userId: usageInfo.userId,
+      apiKeyId: usageInfo.apiKeyId,
+      model: usageInfo.modelId || null,
+      endpoint,
+      statusCode: upstreamResponse.status,
+      requestCost: usageInfo.requestCost,
+      eventType: usageInfo.eventType,
+      billable: usageInfo.billable,
+      ...streamingUsage
+    });
+  }
+}
+
 async function proxyJsonRequest(
   req: Request,
   res: Response,
   pathname: string,
   payload: unknown = req.body,
-  quotaInfo?: { userId: string; planTier: PlanTierConfig; quotaCost: number; modelId: string }
+  options: ProxyJsonOptions = {}
 ): Promise<void> {
+  const { quotaInfo, usageInfo } = options;
   let upstreamResponse: globalThis.Response;
 
   try {
@@ -178,22 +322,23 @@ async function proxyJsonRequest(
   const isStreaming = bodyAsObject.stream === true || contentType.includes("text/event-stream");
 
   if (isStreaming) {
-    await pipeUpstreamResponse(upstreamResponse, res);
+    await pipeStreamingResponseWithUsage(upstreamResponse, res, usageInfo, pathname);
     return;
   }
 
   const responsePayload = await decodeResponse(upstreamResponse);
-  if (quotaInfo && upstreamResponse.status < 500) {
+  if (usageInfo && upstreamResponse.status < 500) {
     const usage = extractTokenUsage(responsePayload);
-    const apiKeyId = typeof res.locals.apiKeyId === "string" ? res.locals.apiKeyId : null;
 
     recordUsageEvent({
-      userId: quotaInfo.userId,
-      apiKeyId,
-      model: quotaInfo.modelId || null,
+      userId: usageInfo.userId,
+      apiKeyId: usageInfo.apiKeyId,
+      model: usageInfo.modelId || null,
       endpoint: pathname,
       statusCode: upstreamResponse.status,
-      requestCost: quotaInfo.quotaCost,
+      requestCost: usageInfo.requestCost,
+      eventType: usageInfo.eventType,
+      billable: usageInfo.billable,
       ...usage
     });
   }
@@ -220,10 +365,13 @@ router.post(
     if (!quotaInfo) return;
 
     await proxyJsonRequest(req, res, "/v1/chat/completions", req.body, {
-      userId,
-      planTier,
-      quotaCost: quotaInfo.quotaCost,
-      modelId
+      quotaInfo: {
+        userId,
+        planTier,
+        quotaCost: quotaInfo.quotaCost,
+        modelId
+      },
+      usageInfo: buildInferenceUsageInfo(res, { userId, quotaCost: quotaInfo.quotaCost, modelId })
     });
   })
 );
@@ -239,10 +387,56 @@ router.post(
     if (!quotaInfo) return;
 
     await proxyJsonRequest(req, res, "/v1/responses", req.body, {
-      userId,
-      planTier,
-      quotaCost: quotaInfo.quotaCost,
-      modelId
+      quotaInfo: {
+        userId,
+        planTier,
+        quotaCost: quotaInfo.quotaCost,
+        modelId
+      },
+      usageInfo: buildInferenceUsageInfo(res, { userId, quotaCost: quotaInfo.quotaCost, modelId })
+    });
+  })
+);
+
+router.post(
+  "/messages",
+  asyncHandler(async (req, res) => {
+    if (!requireModel(req, res)) return;
+    const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
+    const planTier = getPlanTierOrDefault(res.locals.planTier);
+    const modelId = resolveChargeModel(req.path, req.body);
+    const quotaInfo = reserveInferenceQuota(res, modelId);
+    if (!quotaInfo) return;
+
+    await proxyJsonRequest(req, res, "/v1/messages", req.body, {
+      quotaInfo: {
+        userId,
+        planTier,
+        quotaCost: quotaInfo.quotaCost,
+        modelId
+      },
+      usageInfo: buildInferenceUsageInfo(res, { userId, quotaCost: quotaInfo.quotaCost, modelId })
+    });
+  })
+);
+
+router.post(
+  "/messages/count_tokens",
+  asyncHandler(async (req, res) => {
+    if (!requireModel(req, res)) return;
+    const userId = getUserIdOrReject(res);
+    if (!userId) return;
+    const modelId = resolveChargeModel(req.path, req.body);
+
+    await proxyJsonRequest(req, res, "/v1/messages/count_tokens", req.body, {
+      usageInfo: {
+        userId,
+        apiKeyId: typeof res.locals.apiKeyId === "string" ? res.locals.apiKeyId : null,
+        modelId,
+        requestCost: 0,
+        eventType: "token_count",
+        billable: false
+      }
     });
   })
 );
@@ -258,10 +452,13 @@ router.post(
     if (!quotaInfo) return;
 
     await proxyJsonRequest(req, res, "/v1/chat/completions", payload, {
-      userId,
-      planTier,
-      quotaCost: quotaInfo.quotaCost,
-      modelId
+      quotaInfo: {
+        userId,
+        planTier,
+        quotaCost: quotaInfo.quotaCost,
+        modelId
+      },
+      usageInfo: buildInferenceUsageInfo(res, { userId, quotaCost: quotaInfo.quotaCost, modelId })
     });
   })
 );
@@ -277,10 +474,13 @@ router.post(
     if (!quotaInfo) return;
 
     await proxyJsonRequest(req, res, "/v1/responses", payload, {
-      userId,
-      planTier,
-      quotaCost: quotaInfo.quotaCost,
-      modelId
+      quotaInfo: {
+        userId,
+        planTier,
+        quotaCost: quotaInfo.quotaCost,
+        modelId
+      },
+      usageInfo: buildInferenceUsageInfo(res, { userId, quotaCost: quotaInfo.quotaCost, modelId })
     });
   })
 );

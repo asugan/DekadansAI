@@ -17,6 +17,8 @@ export interface UsageEventInput extends TokenUsage {
   endpoint: string;
   statusCode: number;
   requestCost: number;
+  eventType?: "inference" | "token_count";
+  billable?: boolean;
 }
 
 interface UsageAggregateRow {
@@ -87,10 +89,20 @@ database
   )
   .run();
 
+function ensureColumn(table: string, column: string, definition: string): void {
+  const rows = database.prepare(`pragma table_info(${table})`).all() as { name: string }[];
+  if (rows.some((row) => row.name === column)) return;
+  database.prepare(`alter table ${table} add column ${column} ${definition}`).run();
+}
+
+ensureColumn("usage_events", "eventType", "text not null default 'inference'");
+ensureColumn("usage_events", "billable", "integer not null default 1");
+
 database.prepare("create index if not exists usage_events_userId_idx on usage_events(userId)").run();
 database.prepare("create index if not exists usage_events_apiKeyId_idx on usage_events(apiKeyId)").run();
 database.prepare("create index if not exists usage_events_model_idx on usage_events(model)").run();
 database.prepare("create index if not exists usage_events_createdAt_idx on usage_events(createdAt)").run();
+database.prepare("create index if not exists usage_events_eventType_idx on usage_events(eventType)").run();
 
 const insertUsageEvent = database.prepare(`
   insert into usage_events (
@@ -105,6 +117,8 @@ const insertUsageEvent = database.prepare(`
     totalTokens,
     tokenValue,
     requestCost,
+    eventType,
+    billable,
     createdAt
   )
   values (
@@ -119,6 +133,8 @@ const insertUsageEvent = database.prepare(`
     @totalTokens,
     @tokenValue,
     @requestCost,
+    @eventType,
+    @billable,
     @createdAt
   )
 `);
@@ -134,7 +150,7 @@ const overallUsage = database
       coalesce(sum(tokenValue), 0) as tokenValue,
       max(createdAt) as lastRequestAt
     from usage_events
-    where userId = ?
+    where userId = ? and eventType = 'inference'
   `
   )
   .pluck(false);
@@ -151,7 +167,7 @@ const usageByKey = database
       coalesce(sum(tokenValue), 0) as tokenValue,
       max(createdAt) as lastRequestAt
     from usage_events
-    where userId = ?
+    where userId = ? and eventType = 'inference'
     group by apiKeyId
   `
   );
@@ -168,7 +184,7 @@ const usageByModel = database
       coalesce(sum(tokenValue), 0) as tokenValue,
       max(createdAt) as lastRequestAt
     from usage_events
-    where userId = ? and model is not null and model != ''
+    where userId = ? and eventType = 'inference' and model is not null and model != ''
     group by model
     order by totalTokens desc, requests desc
   `
@@ -178,7 +194,10 @@ export function extractTokenUsage(payload: unknown): TokenUsage {
   const root = asObject(payload);
   const usage = asObject(root.usage);
 
-  const inputTokens = toNumber(usage.input_tokens ?? usage.prompt_tokens);
+  const inputTokens =
+    toNumber(usage.input_tokens ?? root.input_tokens ?? usage.prompt_tokens) +
+    toNumber(usage.cache_creation_input_tokens) +
+    toNumber(usage.cache_read_input_tokens);
   const outputTokens = toNumber(usage.output_tokens ?? usage.completion_tokens);
   const totalTokens = toNumber(usage.total_tokens) || inputTokens + outputTokens;
 
@@ -205,6 +224,8 @@ export function recordUsageEvent(input: UsageEventInput): void {
     totalTokens,
     tokenValue: totalTokens,
     requestCost: input.requestCost,
+    eventType: input.eventType || "inference",
+    billable: input.billable === false ? 0 : 1,
     createdAt
   });
 }
