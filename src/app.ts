@@ -10,7 +10,7 @@ import { fetchModelCatalog } from "./lib/model-catalog";
 import { authMiddleware } from "./middleware/auth";
 import { weeklyPlanMiddleware } from "./middleware/weekly-plan";
 import { accountRouter } from "./routes/account";
-import { aiRouter } from "./routes/ai";
+import { v1Router } from "./routes/ai";
 
 const app = express();
 
@@ -53,7 +53,7 @@ app.use(express.json({ limit: "2mb" }));
 
 app.use("/account", accountRouter);
 
-app.use("/ai", authMiddleware, weeklyPlanMiddleware, aiRouter);
+app.use("/v1", authMiddleware, weeklyPlanMiddleware, v1Router);
 
 app.use((_req, _res, next) => {
   next(new HttpError("not found", 404));

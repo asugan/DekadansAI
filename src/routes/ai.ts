@@ -15,7 +15,7 @@ import { sanitizePublicModelPayload } from "../lib/model-catalog";
 import { extractTokenUsage, recordUsageEvent } from "../lib/usage-stats";
 import { decodeResponse, requestInference } from "../services/cliproxy-client";
 
-const router = express.Router();
+const v1Router = express.Router();
 
 type JsonObject = Record<string, unknown>;
 type UsageEventType = "inference" | "token_count";
@@ -42,40 +42,13 @@ function asObject(value: unknown): JsonObject {
   return {};
 }
 
-function defaultChatPayload(body: unknown): JsonObject {
-  const payload = asObject(body);
-
-  return {
-    ...payload,
-    model: config.defaultModel,
-    reasoning_effort:
-      payload.reasoning_effort === undefined ? config.defaultReasoningEffort : payload.reasoning_effort
-  };
-}
-
-function defaultResponsesPayload(body: unknown): JsonObject {
-  const payload = asObject(body);
-  const reasoning = asObject(payload.reasoning);
-
-  return {
-    ...payload,
-    model: config.defaultModel,
-    reasoning:
-      Object.keys(reasoning).length > 0
-        ? reasoning
-        : {
-            effort: config.defaultReasoningEffort
-          }
-  };
-}
-
 function getRequestedModel(body: unknown): string {
   const payload = asObject(body);
   return typeof payload.model === "string" ? payload.model.trim() : "";
 }
 
-export function resolveChargeModel(reqPath: string, payload: unknown): string {
-  return reqPath.startsWith("/default/") ? config.defaultModel : getRequestedModel(payload);
+export function resolveChargeModel(_reqPath: string, payload: unknown): string {
+  return getRequestedModel(payload);
 }
 
 function getPlanTierOrDefault(tier?: PlanTierConfig): PlanTierConfig {
@@ -345,144 +318,91 @@ async function proxyJsonRequest(
   res.status(upstreamResponse.status).json(responsePayload || {});
 }
 
-router.get(
-  "/models",
-  asyncHandler(async (_req, res) => {
-    const upstreamResponse = await requestInference({ method: "GET", pathname: "/v1/models" });
-    const payload = await decodeResponse(upstreamResponse);
-    res.status(upstreamResponse.status).json(sanitizePublicModelPayload(payload || {}));
-  })
-);
+const handleModels = asyncHandler(async (_req, res) => {
+  const upstreamResponse = await requestInference({ method: "GET", pathname: "/v1/models" });
+  const payload = await decodeResponse(upstreamResponse);
+  res.status(upstreamResponse.status).json(sanitizePublicModelPayload(payload || {}));
+});
 
-router.post(
-  "/chat/completions",
-  asyncHandler(async (req, res) => {
-    if (!requireModel(req, res)) return;
-    const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
-    const planTier = getPlanTierOrDefault(res.locals.planTier);
-    const modelId = resolveChargeModel(req.path, req.body);
-    const quotaInfo = reserveInferenceQuota(res, modelId);
-    if (!quotaInfo) return;
+const handleChatCompletions = asyncHandler(async (req, res) => {
+  if (!requireModel(req, res)) return;
+  const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
+  const planTier = getPlanTierOrDefault(res.locals.planTier);
+  const modelId = resolveChargeModel(req.path, req.body);
+  const quotaInfo = reserveInferenceQuota(res, modelId);
+  if (!quotaInfo) return;
 
-    await proxyJsonRequest(req, res, "/v1/chat/completions", req.body, {
-      quotaInfo: {
-        userId,
-        planTier,
-        quotaCost: quotaInfo.quotaCost,
-        modelId
-      },
-      usageInfo: buildInferenceUsageInfo(res, { userId, quotaCost: quotaInfo.quotaCost, modelId })
-    });
-  })
-);
+  await proxyJsonRequest(req, res, "/v1/chat/completions", req.body, {
+    quotaInfo: {
+      userId,
+      planTier,
+      quotaCost: quotaInfo.quotaCost,
+      modelId
+    },
+    usageInfo: buildInferenceUsageInfo(res, { userId, quotaCost: quotaInfo.quotaCost, modelId })
+  });
+});
 
-router.post(
-  "/responses",
-  asyncHandler(async (req, res) => {
-    if (!requireModel(req, res)) return;
-    const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
-    const planTier = getPlanTierOrDefault(res.locals.planTier);
-    const modelId = resolveChargeModel(req.path, req.body);
-    const quotaInfo = reserveInferenceQuota(res, modelId);
-    if (!quotaInfo) return;
+const handleResponses = asyncHandler(async (req, res) => {
+  if (!requireModel(req, res)) return;
+  const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
+  const planTier = getPlanTierOrDefault(res.locals.planTier);
+  const modelId = resolveChargeModel(req.path, req.body);
+  const quotaInfo = reserveInferenceQuota(res, modelId);
+  if (!quotaInfo) return;
 
-    await proxyJsonRequest(req, res, "/v1/responses", req.body, {
-      quotaInfo: {
-        userId,
-        planTier,
-        quotaCost: quotaInfo.quotaCost,
-        modelId
-      },
-      usageInfo: buildInferenceUsageInfo(res, { userId, quotaCost: quotaInfo.quotaCost, modelId })
-    });
-  })
-);
+  await proxyJsonRequest(req, res, "/v1/responses", req.body, {
+    quotaInfo: {
+      userId,
+      planTier,
+      quotaCost: quotaInfo.quotaCost,
+      modelId
+    },
+    usageInfo: buildInferenceUsageInfo(res, { userId, quotaCost: quotaInfo.quotaCost, modelId })
+  });
+});
 
-router.post(
-  "/messages",
-  asyncHandler(async (req, res) => {
-    if (!requireModel(req, res)) return;
-    const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
-    const planTier = getPlanTierOrDefault(res.locals.planTier);
-    const modelId = resolveChargeModel(req.path, req.body);
-    const quotaInfo = reserveInferenceQuota(res, modelId);
-    if (!quotaInfo) return;
+const handleMessages = asyncHandler(async (req, res) => {
+  if (!requireModel(req, res)) return;
+  const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
+  const planTier = getPlanTierOrDefault(res.locals.planTier);
+  const modelId = resolveChargeModel(req.path, req.body);
+  const quotaInfo = reserveInferenceQuota(res, modelId);
+  if (!quotaInfo) return;
 
-    await proxyJsonRequest(req, res, "/v1/messages", req.body, {
-      quotaInfo: {
-        userId,
-        planTier,
-        quotaCost: quotaInfo.quotaCost,
-        modelId
-      },
-      usageInfo: buildInferenceUsageInfo(res, { userId, quotaCost: quotaInfo.quotaCost, modelId })
-    });
-  })
-);
+  await proxyJsonRequest(req, res, "/v1/messages", req.body, {
+    quotaInfo: {
+      userId,
+      planTier,
+      quotaCost: quotaInfo.quotaCost,
+      modelId
+    },
+    usageInfo: buildInferenceUsageInfo(res, { userId, quotaCost: quotaInfo.quotaCost, modelId })
+  });
+});
 
-router.post(
-  "/messages/count_tokens",
-  asyncHandler(async (req, res) => {
-    if (!requireModel(req, res)) return;
-    const userId = getUserIdOrReject(res);
-    if (!userId) return;
-    const modelId = resolveChargeModel(req.path, req.body);
+const handleMessageTokenCount = asyncHandler(async (req, res) => {
+  if (!requireModel(req, res)) return;
+  const userId = getUserIdOrReject(res);
+  if (!userId) return;
+  const modelId = resolveChargeModel(req.path, req.body);
 
-    await proxyJsonRequest(req, res, "/v1/messages/count_tokens", req.body, {
-      usageInfo: {
-        userId,
-        apiKeyId: typeof res.locals.apiKeyId === "string" ? res.locals.apiKeyId : null,
-        modelId,
-        requestCost: 0,
-        eventType: "token_count",
-        billable: false
-      }
-    });
-  })
-);
+  await proxyJsonRequest(req, res, "/v1/messages/count_tokens", req.body, {
+    usageInfo: {
+      userId,
+      apiKeyId: typeof res.locals.apiKeyId === "string" ? res.locals.apiKeyId : null,
+      modelId,
+      requestCost: 0,
+      eventType: "token_count",
+      billable: false
+    }
+  });
+});
 
-router.post(
-  "/default/chat/completions",
-  asyncHandler(async (req, res) => {
-    const payload = defaultChatPayload(req.body);
-    const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
-    const planTier = getPlanTierOrDefault(res.locals.planTier);
-    const modelId = resolveChargeModel(req.path, payload);
-    const quotaInfo = reserveInferenceQuota(res, modelId);
-    if (!quotaInfo) return;
+v1Router.get("/models", handleModels);
+v1Router.post("/chat/completions", handleChatCompletions);
+v1Router.post("/responses", handleResponses);
+v1Router.post("/messages", handleMessages);
+v1Router.post("/messages/count_tokens", handleMessageTokenCount);
 
-    await proxyJsonRequest(req, res, "/v1/chat/completions", payload, {
-      quotaInfo: {
-        userId,
-        planTier,
-        quotaCost: quotaInfo.quotaCost,
-        modelId
-      },
-      usageInfo: buildInferenceUsageInfo(res, { userId, quotaCost: quotaInfo.quotaCost, modelId })
-    });
-  })
-);
-
-router.post(
-  "/default/responses",
-  asyncHandler(async (req, res) => {
-    const payload = defaultResponsesPayload(req.body);
-    const userId = typeof res.locals.userId === "string" ? res.locals.userId : "";
-    const planTier = getPlanTierOrDefault(res.locals.planTier);
-    const modelId = resolveChargeModel(req.path, payload);
-    const quotaInfo = reserveInferenceQuota(res, modelId);
-    if (!quotaInfo) return;
-
-    await proxyJsonRequest(req, res, "/v1/responses", payload, {
-      quotaInfo: {
-        userId,
-        planTier,
-        quotaCost: quotaInfo.quotaCost,
-        modelId
-      },
-      usageInfo: buildInferenceUsageInfo(res, { userId, quotaCost: quotaInfo.quotaCost, modelId })
-    });
-  })
-);
-
-export { router as aiRouter };
+export { v1Router };

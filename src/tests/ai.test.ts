@@ -19,16 +19,18 @@ async function loadAiRoutes() {
   return import("../routes/ai.js");
 }
 
-void test("default AI routes charge the configured default model", async () => {
-  const { resolveChargeModel } = await loadAiRoutes();
+function getRoutePaths(router: unknown, method: "get" | "post"): string[] {
+  const stack = (router as {
+    stack?: Array<{ route?: { path?: string; methods?: Record<string, boolean> } }>;
+  }).stack || [];
 
-  assert.equal(
-    resolveChargeModel("/default/chat/completions", { model: "kimi-k2.6" }),
-    "gpt-5.3-codex"
-  );
-});
+  return stack
+    .filter((layer) => layer.route?.methods?.[method])
+    .map((layer) => layer.route?.path)
+    .filter((path): path is string => typeof path === "string");
+}
 
-void test("non-default AI routes charge the requested model", async () => {
+void test("AI routes charge the requested model", async () => {
   const { resolveChargeModel } = await loadAiRoutes();
 
   assert.equal(resolveChargeModel("/chat/completions", { model: "kimi-k2.6" }), "kimi-k2.6");
@@ -38,4 +40,16 @@ void test("anthropic messages route charges the requested model", async () => {
   const { resolveChargeModel } = await loadAiRoutes();
 
   assert.equal(resolveChargeModel("/messages", { model: "claude-sonnet-4" }), "claude-sonnet-4");
+});
+
+void test("v1 router exposes only standard compatible routes", async () => {
+  const { v1Router } = await loadAiRoutes();
+
+  assert.deepEqual(getRoutePaths(v1Router, "get"), ["/models"]);
+  assert.deepEqual(getRoutePaths(v1Router, "post"), [
+    "/chat/completions",
+    "/responses",
+    "/messages",
+    "/messages/count_tokens"
+  ]);
 });
