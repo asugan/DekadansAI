@@ -8,7 +8,7 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dekadansai-entitlement-tes
 const futurePeriodEnd = Date.now() + 86_400_000;
 
 process.env.BETTER_AUTH_DATABASE_PATH = path.join(tmpDir, "test.db");
-process.env.POLAR_PLAN_TIERS = "prod_weekly_500,weekly-500,500,8000,500 Request";
+process.env.POLAR_PLAN_TIERS = "prod_weekly_500,weekly-500,500,8000,Max";
 process.env.DEFAULT_MODEL_REQUEST_COST = "3";
 
 async function loadTestModules() {
@@ -41,7 +41,7 @@ void test("quota refund restores reserved request cost", async () => {
   const tier = {
     productId: "prod_weekly_500",
     slug: "weekly-500",
-    label: "500 Request",
+    label: "Max",
     quotaMax: 500,
     weeklyQuotaMax: 8000
   };

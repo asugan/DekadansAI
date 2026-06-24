@@ -8,7 +8,7 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dekadansai-ai-test-"));
 
 process.env.BETTER_AUTH_DATABASE_PATH = path.join(tmpDir, "test.db");
 process.env.DEFAULT_MODEL = "gpt-5.3-codex";
-process.env.POLAR_PLAN_TIERS = "prod_weekly_500,weekly-500,500,8000,500 Request";
+process.env.POLAR_PLAN_TIERS = "prod_weekly_500,weekly-500,500,8000,Max";
 
 async function loadAiRoutes() {
   const { database } = await import("../lib/database.js");
