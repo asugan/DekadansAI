@@ -87,6 +87,46 @@ void test("fresh inactive subscription state does not call Polar", async () => {
   }
 });
 
+void test("refresh bypasses fresh inactive subscription state", async () => {
+  const { database, polarClient, resolveWeeklyPlanStatus } = await loadTestModules();
+
+  database
+    .prepare("insert into user (id, name, email, emailVerified, createdAt, updatedAt) values (?, ?, ?, ?, ?, ?)")
+    .run("user-refresh", "Refresh User", "refresh@example.com", 1, Date.now(), Date.now());
+  database
+    .prepare(
+      "insert into subscription_customers (userId, polarCustomerId, customerExists, syncedAt) values (?, ?, ?, ?)"
+    )
+    .run("user-refresh", "cust-refresh", 1, Date.now());
+
+  let called = false;
+  const originalGetStateExternal = polarClient.customers.getStateExternal.bind(polarClient.customers);
+  polarClient.customers.getStateExternal = async () => {
+    called = true;
+    return {
+      id: "cust-refresh",
+      externalId: "user-refresh",
+      activeSubscriptions: [
+        {
+          id: "sub-refresh",
+          productId: "prod_weekly_500",
+          status: "active",
+          currentPeriodEnd: futurePeriodEnd
+        }
+      ]
+    } as unknown as Awaited<ReturnType<typeof polarClient.customers.getStateExternal>>;
+  };
+
+  try {
+    const status = await resolveWeeklyPlanStatus("user-refresh", { refresh: true });
+    assert.equal(called, true);
+    assert.equal(status.active, true);
+    assert.equal(status.tierSlug, "weekly-500");
+  } finally {
+    polarClient.customers.getStateExternal = originalGetStateExternal;
+  }
+});
+
 void test("stale inactive subscription state hydrates from Polar", async () => {
   const { database, polarClient, resolveWeeklyPlanStatus } = await loadTestModules();
 

@@ -30,6 +30,10 @@ export interface SubscriptionEntitlement extends WeeklyPlanStatus {
   source: "local" | "polar" | "none";
 }
 
+export interface ResolveWeeklyPlanStatusOptions {
+  refresh?: boolean;
+}
+
 const inactiveStateTtlMs = 60_000;
 
 database
@@ -391,7 +395,10 @@ export function getLocalWeeklyPlanStatus(
   };
 }
 
-export async function resolveWeeklyPlanStatus(userId: string): Promise<SubscriptionEntitlement> {
+export async function resolveWeeklyPlanStatus(
+  userId: string,
+  options: ResolveWeeklyPlanStatusOptions = {}
+): Promise<SubscriptionEntitlement> {
   const localStatus = getLocalWeeklyPlanStatus(userId);
   const customerRow = getSubscriptionCustomerByUser.get(userId) as SubscriptionCustomerRow | undefined;
 
@@ -399,7 +406,7 @@ export async function resolveWeeklyPlanStatus(userId: string): Promise<Subscript
     return localStatus;
   }
 
-  if (customerRow && Date.now() - customerRow.syncedAt < inactiveStateTtlMs) {
+  if (!options.refresh && customerRow && Date.now() - customerRow.syncedAt < inactiveStateTtlMs) {
     return localStatus;
   }
 

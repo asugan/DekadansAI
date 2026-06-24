@@ -41,6 +41,10 @@ function toBoolean(value: unknown, fallback: boolean): boolean {
   return fallback;
 }
 
+function shouldRefreshEntitlements(value: unknown): boolean {
+  return toBoolean(value, false);
+}
+
 function toTimestamp(value: unknown): number | null {
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? null : value.getTime();
@@ -81,7 +85,9 @@ router.get(
       return res.status(401).json({ error: "unauthorized" });
     }
 
-    const weeklyPlan = await resolveWeeklyPlanStatus(session.user.id);
+    const weeklyPlan = await resolveWeeklyPlanStatus(session.user.id, {
+      refresh: shouldRefreshEntitlements(req.query.refresh)
+    });
 
     return res.json({
       generatedAt: new Date().toISOString(),
@@ -118,7 +124,9 @@ router.get(
       return res.status(401).json({ error: "unauthorized" });
     }
 
-    const planStatus = await resolveWeeklyPlanStatus(session.user.id);
+    const planStatus = await resolveWeeklyPlanStatus(session.user.id, {
+      refresh: shouldRefreshEntitlements(req.query.refresh)
+    });
     const planTier = planStatus.tier || config.planTiers[0];
 
     const apiKeys = await auth.api.listApiKeys({ headers });
