@@ -75,6 +75,23 @@ function toIso(value: number | null): string | null {
   return new Date(value).toISOString();
 }
 
+router.get("/plans", (_req, res) => {
+  return res.json({
+    generatedAt: new Date().toISOString(),
+    quotaWindowMs: config.accountQuotaWindowMs,
+    weeklyQuotaWindowMs: config.weeklyQuotaWindowMs,
+    burstWindowMs: config.accountBurstWindowMs,
+    burstMax: config.accountBurstMax,
+    defaultRequestCost: config.defaultModelRequestCost,
+    planTiers: config.planTiers.map((tier) => ({
+      slug: tier.slug,
+      label: tier.label,
+      quotaMax: tier.quotaMax,
+      weeklyQuotaMax: tier.weeklyQuotaMax
+    }))
+  });
+});
+
 router.get(
   "/billing",
   asyncHandler(async (req, res) => {
@@ -91,6 +108,8 @@ router.get(
 
     return res.json({
       generatedAt: new Date().toISOString(),
+      quotaWindowMs: config.accountQuotaWindowMs,
+      weeklyQuotaWindowMs: config.weeklyQuotaWindowMs,
       weeklyPlan: {
         active: weeklyPlan.active,
         tierSlug: weeklyPlan.tierSlug,
